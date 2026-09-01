@@ -1,0 +1,374 @@
+import React, { useState, useEffect } from 'react';
+import { api } from '../../api/client';
+import { Lead, User, Business, LeadSource, Tag } from '../../types';
+import { LeadTable } from '../../components/leads/LeadTable';
+import { SearchFilterBar } from '../../components/common/SearchFilterBar';
+import { BulkActionModal } from '../../components/leads/BulkActionModal';
+import { CreateLeadModal } from '../../components/leads/CreateLeadModal';
+import { LeadDetailModal } from '../../components/leads/LeadDetailModal';
+import { CallModal } from '../../components/leads/CallModal';
+import { WhatsAppModal } from '../../components/leads/WhatsAppModal';
+import { FollowupModal } from '../../components/leads/FollowupModal';
+import { PotentialHandoverModal } from '../../components/leads/PotentialHandoverModal';
+import { LoadingSpinner } from '../../components/common/LoadingSpinner';
+import { EmptyState } from '../../components/common/EmptyState';
+import { toast } from 'sonner';
+import { Users, Plus, Download, UploadCloud, CheckSquare, Sparkles, Filter } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router-dom';
+
+export const AdminLeadsPage: React.FC = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [pagination, setPagination] = useState({ page: 1, limit: 25, total: 0, totalPages: 1 });
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Filters state
+  const [search, setSearch] = useState(searchParams.get('search') || '');
+  const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || '');
+  const [priorityFilter, setPriorityFilter] = useState(searchParams.get('priority') || '');
+  const [sourceFilter, setSourceFilter] = useState(searchParams.get('source_id') || '');
+  const [consultantFilter, setConsultantFilter] = useState(searchParams.get('assigned_consultant_id') || '');
+  const [businessFilter, setBusinessFilter] = useState(searchParams.get('internal_business_id') || '');
+  const [unassignedFilter, setUnassignedFilter] = useState(searchParams.get('unassigned') || '');
+
+  // Aux reference data
+  const [consultants, setConsultants] = useState<User[]>([]);
+  const [businesses, setBusinesses] = useState<Business[]>([]);
+  const [sources, setSources] = useState<LeadSource[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
+
+  // Selection & Modals
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [selectedLeadId, setSelectedLeadId] = useState<number | null>(null);
+  const [activeModalLead, setActiveModalLead] = useState<Lead | null>(null);
+  const [modalType, setModalType] = useState<'call' | 'whatsapp' | 'followup' | 'handover' | null>(null);
+
+  const fetchAuxData = async () => {
+    try {
+      const [cRes, bRes, sRes, tRes] = await Promise.all([
+        api.consultants.list(),
+        api.businesses.list(),
+        api.sources.list(),
+        api.tags.list(),
+      ]);
+      setConsultants(cRes.consultants);
+      setBusinesses(bRes.businesses);
+      setSources(sRes.sources);
+      setTags(tRes.tags);
+    } catch (err) {
+      console.error('Failed to load auxiliary data:', err);
+    }
+  };
+
+  const fetchLeads = async (page = pagination.page) => {
+    setIsLoading(true);
+    try {
+      const res = await api.leads.list({
+        page,
+        limit: pagination.limit,
+        search: search.trim() || undefined,
+        status: statusFilter || undefined,
+        priority: priorityFilter || undefined,
+        source_id: sourceFilter ? Number(sourceFilter) : undefined,
+        consultant_id: consultantFilter ? Number(consultantFilter) : undefined,
+        business_id: businessFilter ? Number(businessFilter) : undefined,
+      });
+
+      setLeads(res.leads);
+      setPagination(res.pagination);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to fetch leads');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAuxData();
+  }, []);
+
+  useEffect(() => {
+    fetchLeads(1);
+  }, [search, statusFilter, priorityFilter, sourceFilter, consultantFilter, businessFilter, unassignedFilter]);
+
+  const handleToggleSelect = (id: number) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAll = () => {
+    if (selectedIds.length === leads.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(leads.map((l) => l.id));
+    }
+  };
+
+  const handleExportCSV = () => {
+    const params = new URLSearchParams({
+      ...(statusFilter ? { status: statusFilter } : {}),
+      ...(priorityFilter ? { priority: priorityFilter } : {}),
+      ...(sourceFilter ? { source_id: sourceFilter } : {}),
+      ...(consultantFilter ? { assigned_consultant_id: consultantFilter } : {}),
+      ...(businessFilter ? { internal_business_id: businessFilter } : {}),
+    });
+    window.location.href = `/api/exports/leads/csv?${params.toString()}`;
+    toast.success('Lead database export initiated!');
+  };
+
+  const handleResetFilters = () => {
+    setSearch('');
+    setStatusFilter('');
+    setPriorityFilter('');
+    setSourceFilter('');
+    setConsultantFilter('');
+    setBusinessFilter('');
+    setUnassignedFilter('');
+  };
+
+  return (
+    <div className="space-y-5">
+      {/* Header Bar */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-slate-900/60 p-4 rounded-2xl border border-slate-800 backdrop-blur-md">
+        <div>
+          <h1 className="text-xl font-black text-white flex items-center gap-2">
+            <Users className="w-5 h-5 text-indigo-400" />
+            Central Lead Database
+          </h1>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Total {pagination.total} leads • MCA imports, Meta Ads, LinkedIn, and Inbound Sources
+          </p>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex flex-wrap items-center gap-2">
+          {selectedIds.length > 0 && (
+            <button
+              onClick={() => setIsBulkModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl shadow-md shadow-indigo-600/20 transition active:scale-95"
+            >
+              <CheckSquare className="w-4 h-4" />
+              Bulk Action ({selectedIds.length})
+            </button>
+          )}
+
+          <button
+            onClick={handleExportCSV}
+            title="Export CSV (Super Admin Only)"
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl transition"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Export CSV
+          </button>
+
+          <Link
+            to="/admin/import"
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl transition"
+          >
+            <UploadCloud className="w-3.5 h-3.5" />
+            Import MCA
+          </Link>
+
+          <button
+            onClick={() => setIsCreateModalOpen(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl shadow-md transition"
+          >
+            <Plus className="w-4 h-4" />
+            Add Lead
+          </button>
+        </div>
+      </div>
+
+      {/* Search & Filter Bar */}
+      <SearchFilterBar
+        search={search}
+        onSearchChange={setSearch}
+        statusFilter={statusFilter}
+        onStatusChange={setStatusFilter}
+        priorityFilter={priorityFilter}
+        onPriorityChange={setPriorityFilter}
+        sourceFilter={sourceFilter}
+        onSourceChange={setSourceFilter}
+        sourcesList={sources}
+        onReset={handleResetFilters}
+      >
+        {/* Admin specific filters */}
+        <select
+          value={consultantFilter}
+          onChange={(e) => setConsultantFilter(e.target.value)}
+          className="px-3 py-2 text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700"
+        >
+          <option value="">All Consultants</option>
+          {consultants.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+
+        <select
+          value={businessFilter}
+          onChange={(e) => setBusinessFilter(e.target.value)}
+          className="px-3 py-2 text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700"
+        >
+          <option value="">All Businesses</option>
+          {businesses.map((b) => (
+            <option key={b.id} value={b.id}>
+              {b.name}
+            </option>
+          ))}
+        </select>
+      </SearchFilterBar>
+
+      {/* Main Table View */}
+      {isLoading ? (
+        <LoadingSpinner text="Querying and filtering leads database..." />
+      ) : leads.length === 0 ? (
+        <EmptyState
+          icon={<Users className="w-8 h-8 text-indigo-600" />}
+          title="No Leads Found"
+          description="No leads match your current search and filter criteria. You can import new records or clear filters."
+          action={
+            <button
+              onClick={handleResetFilters}
+              className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition"
+            >
+              Clear All Filters
+            </button>
+          }
+        />
+      ) : (
+        <div className="space-y-4">
+          <LeadTable
+            leads={leads}
+            selectedIds={selectedIds}
+            onToggleSelect={handleToggleSelect}
+            onSelectAll={handleSelectAll}
+            onCall={(l) => {
+              setActiveModalLead(l);
+              setModalType('call');
+            }}
+            onWhatsApp={(l) => {
+              setActiveModalLead(l);
+              setModalType('whatsapp');
+            }}
+            onFollowup={(l) => {
+              setActiveModalLead(l);
+              setModalType('followup');
+            }}
+            onPotentialHandover={(l) => {
+              setActiveModalLead(l);
+              setModalType('handover');
+            }}
+            onViewDetails={(l) => setSelectedLeadId(l.id)}
+            isSuperAdmin={true}
+          />
+
+          {/* Pagination Bar */}
+          <div className="flex items-center justify-between bg-slate-900/60 p-3 rounded-2xl border border-slate-800 text-xs text-slate-400">
+            <span>
+              Showing {leads.length} of {pagination.total} leads (Page {pagination.page} of {pagination.totalPages})
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                disabled={pagination.page <= 1}
+                onClick={() => fetchLeads(pagination.page - 1)}
+                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white disabled:opacity-30 transition font-medium"
+              >
+                Previous
+              </button>
+              <button
+                disabled={pagination.page >= pagination.totalPages}
+                onClick={() => fetchLeads(pagination.page + 1)}
+                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white disabled:opacity-30 transition font-medium"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modals */}
+      <BulkActionModal
+        isOpen={isBulkModalOpen}
+        onClose={() => setIsBulkModalOpen(false)}
+        selectedIds={selectedIds}
+        consultants={consultants}
+        businesses={businesses}
+        tags={tags}
+        onSuccess={() => {
+          setSelectedIds([]);
+          fetchLeads();
+        }}
+        isSuperAdmin={true}
+      />
+
+      <CreateLeadModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        consultants={consultants}
+        businesses={businesses}
+        sources={sources}
+        tags={tags}
+        onSuccess={() => fetchLeads(1)}
+        isSuperAdmin={true}
+      />
+
+      <LeadDetailModal
+        isOpen={!!selectedLeadId}
+        onClose={() => setSelectedLeadId(null)}
+        leadId={selectedLeadId}
+        onCall={(l) => {
+          setActiveModalLead(l);
+          setModalType('call');
+        }}
+        onWhatsApp={(l) => {
+          setActiveModalLead(l);
+          setModalType('whatsapp');
+        }}
+        onFollowup={(l) => {
+          setActiveModalLead(l);
+          setModalType('followup');
+        }}
+        onPotentialHandover={(l) => {
+          setActiveModalLead(l);
+          setModalType('handover');
+        }}
+        onStatusUpdated={fetchLeads}
+        isSuperAdmin={true}
+      />
+
+      <CallModal
+        isOpen={modalType === 'call'}
+        onClose={() => setModalType(null)}
+        lead={activeModalLead}
+        onSuccess={fetchLeads}
+      />
+
+      <WhatsAppModal
+        isOpen={modalType === 'whatsapp'}
+        onClose={() => setModalType(null)}
+        lead={activeModalLead}
+        onSuccess={fetchLeads}
+      />
+
+      <FollowupModal
+        isOpen={modalType === 'followup'}
+        onClose={() => setModalType(null)}
+        lead={activeModalLead}
+        onSuccess={fetchLeads}
+      />
+
+      <PotentialHandoverModal
+        isOpen={modalType === 'handover'}
+        onClose={() => setModalType(null)}
+        lead={activeModalLead}
+        onSuccess={fetchLeads}
+      />
+    </div>
+  );
+};
