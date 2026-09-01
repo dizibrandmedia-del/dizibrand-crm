@@ -411,27 +411,307 @@ app.get(['/api/leads', '/leads'], authenticateToken, async (req: any, res) => {
   }
 });
 
-// 7. Analytics Dashboard
-app.get(['/api/analytics/dashboard', '/analytics/dashboard'], authenticateToken, async (req: any, res) => {
+// 7. Analytics Dashboard (Super Admin & Executive Command Center)
+app.get([
+  '/api/analytics/admin-dashboard',
+  '/analytics/admin-dashboard',
+  '/api/analytics/dashboard',
+  '/analytics/dashboard',
+], authenticateToken, async (req: any, res) => {
   try {
-    const isConsultant = req.user.role === 'CONSULTANT';
-    const consultantFilter = isConsultant ? `WHERE assigned_consultant_id = ${req.user.id}` : '';
+    const { date_range = 'this_month', custom_from, custom_to } = req.query;
 
-    const [totalLeadsRes, newLeadsRes, contactedRes, wonRes] = await Promise.all([
-      turso.execute(`SELECT COUNT(*) as count FROM leads ${consultantFilter}`),
-      turso.execute(`SELECT COUNT(*) as count FROM leads ${consultantFilter ? consultantFilter + " AND status = 'NEW'" : "WHERE status = 'NEW'"}`),
-      turso.execute(`SELECT COUNT(*) as count FROM leads ${consultantFilter ? consultantFilter + " AND status IN ('CONTACTED', 'INTERESTED', 'IN_PROGRESS')" : "WHERE status IN ('CONTACTED', 'INTERESTED', 'IN_PROGRESS')"}`),
-      turso.execute(`SELECT COUNT(*) as count FROM leads ${consultantFilter ? consultantFilter + " AND status = 'WON'" : "WHERE status = 'WON'"}`),
+    let dateFrom = '';
+    let dateTo = '';
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+
+    if (date_range === 'today') {
+      dateFrom = todayStr;
+      dateTo = todayStr;
+    } else if (date_range === 'yesterday') {
+      const y = new Date(now.getTime() - 86400000);
+      dateFrom = y.toISOString().split('T')[0];
+      dateTo = dateFrom;
+    } else if (date_range === 'this_week') {
+      const monday = new Date(now);
+      monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+      dateFrom = monday.toISOString().split('T')[0];
+      dateTo = todayStr;
+    } else if (date_range === 'this_month') {
+      dateFrom = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+      dateTo = todayStr;
+    } else if (date_range === 'custom' && custom_from && custom_to) {
+      dateFrom = String(custom_from);
+      dateTo = String(custom_to);
+    } else {
+      dateFrom = '2020-01-01';
+      dateTo = todayStr;
+    }
+
+    const [
+      kpisRes,
+      funnelRes,
+      sourceRes,
+      businessRes,
+      consultantRes,
+      overdueFollowupsRes,
+      hotLeadsRes,
+      untouchedLeadsRes,
+      pendingProposalsRes,
+      upcomingMeetingsRes,
+    ] = await Promise.all([
+      turso.execute(`
+        SELECT 
+          (SELECT COUNT(*) FROM leads) as total_leads,
+          (SELECT COUNT(*) FROM leads WHERE date(created_at) BETWEEN '${dateFrom}' AND '${dateTo}') as new_leads_period,
+          (SELECT COUNT(*) FROM leads WHERE assigned_consultant_id IS NOT NULL) as assigned_leads,
+          (SELECT COUNT(*) FROM leads WHERE assigned_consultant_id IS NULL) as unassigned_leads,
+          (SELECT COUNT(*) FROM calls WHERE date(created_at) BETWEEN '${dateFrom}' AND '${dateTo}') as total_calls,
+          (SELECT COUNT(*) FROM calls WHERE outcome IN ('CONNECTED', 'INTERESTED', 'QUALIFIED') AND date(created_at) BETWEEN '${dateFrom}' AND '${dateTo}') as connected_calls,
+          (SELECT COUNT(*) FROM whatsapp_activities WHERE date(created_at) BETWEEN '${dateFrom}' AND '${dateTo}') as total_whatsapp,
+          (SELECT COUNT(*) FROM leads WHERE status = 'QUALIFIED') as qualified_leads,
+          (SELECT COUNT(*) FROM potential_handovers WHERE date(created_at) BETWEEN '${dateFrom}' AND '${dateTo}') as potential_leads,
+          (SELECT COUNT(*) FROM follow_ups WHERE status = 'PENDING') as pending_followups,
+          (SELECT COUNT(*) FROM follow_ups WHERE status = 'PENDING' AND followup_date < '${todayStr}') as overdue_followups,
+          (SELECT COUNT(*) FROM meetings WHERE date(created_at) BETWEEN '${dateFrom}' AND '${dateTo}') as total_meetings,
+          (SELECT COUNT(*) FROM proposals WHERE date(created_at) BETWEEN '${dateFrom}' AND '${dateTo}') as total_proposals,
+          (SELECT COUNT(*) FROM deals WHERE date(closing_date) BETWEEN '${dateFrom}' AND '${dateTo}') as won_deals,
+          (SELECT COALESCE(SUM(revenue), 0) FROM deals WHERE date(closing_date) BETWEEN '${dateFrom}' AND '${dateTo}') as total_revenue,
+          (SELECT COALESCE(SUM(deal_value), 0) FROM deals WHERE date(closing_date) BETWEEN '${dateFrom}' AND '${dateTo}') as total_deal_value
+      `),
+      turso.execute(`
+        SELECT 
+          COUNT(DISTINCT CASE WHEN status = 'NEW' THEN id END) as new_count,
+          COUNT(DISTINCT CASE WHEN status IN ('ASSIGNED', 'CONTACT_ATTEMPTED') THEN id END) as assigned_count,
+          COUNT(DISTINCT CASE WHEN status = 'CONNECTED' THEN id END) as connected_count,
+          COUNT(DISTINCT CASE WHEN status = 'INTERESTED' THEN id END) as interested_count,
+          COUNT(DISTINCT CASE WHEN status = 'QUALIFIED' THEN id END) as qualified_count,
+          COUNT(DISTINCT CASE WHEN status IN ('POTENTIAL_LEAD', 'OWNER_HANDOVER', 'OWNER_CONTACT') THEN id END) as handover_count,
+          COUNT(DISTINCT CASE WHEN status = 'MEETING' THEN id END) as meeting_count,
+          COUNT(DISTINCT CASE WHEN status IN ('PROPOSAL', 'NEGOTIATION') THEN id END) as proposal_count,
+          COUNT(DISTINCT CASE WHEN status = 'WON' THEN id END) as won_count,
+          COUNT(DISTINCT CASE WHEN status = 'LOST' THEN id END) as lost_count
+        FROM leads
+      `),
+      turso.execute(`
+        SELECT 
+          lead_sources.id as source_id,
+          lead_sources.name as source_name,
+          lead_sources.code as source_code,
+          COUNT(DISTINCT leads.id) as total_leads,
+          COUNT(DISTINCT CASE WHEN leads.status = 'QUALIFIED' THEN leads.id END) as qualified_leads,
+          COUNT(DISTINCT CASE WHEN leads.status = 'MEETING' THEN leads.id END) as meeting_leads,
+          COUNT(DISTINCT deals.id) as won_deals,
+          COALESCE(SUM(deals.revenue), 0) as total_revenue
+        FROM lead_sources
+        LEFT JOIN leads ON leads.source_id = lead_sources.id
+        LEFT JOIN deals ON deals.lead_id = leads.id
+        GROUP BY lead_sources.id
+        ORDER BY total_revenue DESC, total_leads DESC
+      `),
+      turso.execute(`
+        SELECT 
+          businesses.id as business_id,
+          businesses.name as business_name,
+          businesses.code as business_code,
+          COUNT(DISTINCT leads.id) as total_leads,
+          COUNT(DISTINCT CASE WHEN leads.status = 'QUALIFIED' THEN leads.id END) as qualified_leads,
+          COUNT(DISTINCT CASE WHEN leads.status = 'MEETING' THEN leads.id END) as meeting_leads,
+          COUNT(DISTINCT deals.id) as won_deals,
+          COALESCE(SUM(deals.revenue), 0) as total_revenue
+        FROM businesses
+        LEFT JOIN leads ON leads.internal_business_id = businesses.id
+        LEFT JOIN deals ON deals.internal_business_id = businesses.id
+        GROUP BY businesses.id
+        ORDER BY total_revenue DESC
+      `),
+      turso.execute(`
+        SELECT 
+          users.id as consultant_id,
+          users.name as consultant_name,
+          users.email as consultant_email,
+          users.daily_call_target,
+          users.daily_lead_target,
+          users.is_active,
+          (SELECT COUNT(*) FROM leads WHERE assigned_consultant_id = users.id) as assigned_leads,
+          (SELECT COUNT(*) FROM calls WHERE consultant_id = users.id AND date(created_at) = '${todayStr}') as today_calls,
+          (SELECT COUNT(*) FROM calls WHERE consultant_id = users.id AND outcome IN ('CONNECTED', 'INTERESTED', 'QUALIFIED') AND date(created_at) = '${todayStr}') as today_connected,
+          (SELECT COUNT(*) FROM whatsapp_activities WHERE consultant_id = users.id AND date(created_at) = '${todayStr}') as today_whatsapp,
+          (SELECT COUNT(*) FROM follow_ups WHERE consultant_id = users.id AND status = 'PENDING' AND followup_date = '${todayStr}') as today_followups,
+          (SELECT COUNT(*) FROM potential_handovers WHERE consultant_id = users.id) as total_potential_handovers,
+          (SELECT COUNT(*) FROM deals WHERE original_consultant_id = users.id) as attributed_won_deals,
+          (SELECT COALESCE(SUM(revenue), 0) FROM deals WHERE original_consultant_id = users.id) as attributed_revenue
+        FROM users
+        WHERE users.role = 'CONSULTANT'
+        ORDER BY attributed_revenue DESC, today_calls DESC
+      `),
+      turso.execute(`
+        SELECT 
+          follow_ups.id, follow_ups.lead_id, leads.lead_id as lead_code,
+          leads.company_name, leads.contact_person, leads.mobile,
+          follow_ups.followup_date, follow_ups.followup_time, follow_ups.priority,
+          users.name as consultant_name
+        FROM follow_ups
+        JOIN leads ON leads.id = follow_ups.lead_id
+        JOIN users ON users.id = follow_ups.consultant_id
+        WHERE follow_ups.status = 'PENDING' AND follow_ups.followup_date < '${todayStr}'
+        ORDER BY follow_ups.followup_date ASC, follow_ups.followup_time ASC
+        LIMIT 10
+      `),
+      turso.execute(`
+        SELECT 
+          leads.id, leads.lead_id as lead_code, leads.company_name,
+          leads.contact_person, leads.mobile, leads.city, leads.lead_score,
+          leads.status, users.name as consultant_name
+        FROM leads
+        LEFT JOIN users ON users.id = leads.assigned_consultant_id
+        WHERE leads.priority = 'HOT' AND leads.status NOT IN ('WON', 'LOST', 'DND')
+        ORDER BY leads.lead_score DESC, leads.updated_at DESC
+        LIMIT 10
+      `),
+      turso.execute(`
+        SELECT 
+          leads.id, leads.lead_id as lead_code, leads.company_name,
+          leads.contact_person, leads.mobile, leads.created_at,
+          lead_sources.name as source_name
+        FROM leads
+        LEFT JOIN lead_sources ON lead_sources.id = leads.source_id
+        WHERE leads.status = 'NEW' AND leads.assigned_consultant_id IS NULL
+        ORDER BY leads.created_at DESC
+        LIMIT 10
+      `),
+      turso.execute(`
+        SELECT 
+          proposals.id, proposals.proposal_code, proposals.service_name,
+          proposals.value, proposals.status, proposals.follow_up_date,
+          leads.company_name, leads.contact_person
+        FROM proposals
+        JOIN leads ON leads.id = proposals.lead_id
+        WHERE proposals.status IN ('SENT', 'UNDER_DISCUSSION', 'NEGOTIATION')
+        ORDER BY proposals.follow_up_date ASC
+        LIMIT 10
+      `),
+      turso.execute(`
+        SELECT 
+          meetings.id, meetings.title, meetings.meeting_date,
+          meetings.meeting_time, meetings.meeting_type,
+          leads.company_name, leads.contact_person
+        FROM meetings
+        JOIN leads ON leads.id = meetings.lead_id
+        WHERE meetings.status = 'SCHEDULED' AND meetings.meeting_date >= '${todayStr}'
+        ORDER BY meetings.meeting_date ASC, meetings.meeting_time ASC
+        LIMIT 10
+      `),
     ]);
 
+    const attentionRequired = {
+      overdueFollowups: overdueFollowupsRes.rows,
+      hotLeads: hotLeadsRes.rows,
+      untouchedLeads: untouchedLeadsRes.rows,
+      pendingProposals: pendingProposalsRes.rows,
+      upcomingMeetings: upcomingMeetingsRes.rows,
+    };
+
     res.json({
-      total_leads: Number(totalLeadsRes.rows[0]?.count || 0),
-      new_leads: Number(newLeadsRes.rows[0]?.count || 0),
-      contacted_leads: Number(contactedRes.rows[0]?.count || 0),
-      won_deals: Number(wonRes.rows[0]?.count || 0),
-      conversion_rate: '14.2%',
+      kpis: kpisRes.rows[0] || {},
+      attentionRequired,
+      funnel: funnelRes.rows[0] || {},
+      sourcePerformance: sourceRes.rows,
+      businessPerformance: businessRes.rows,
+      consultantProductivity: consultantRes.rows,
+      dateRange: { dateFrom, dateTo, selected: date_range },
     });
   } catch (err: any) {
+    console.error('Admin dashboard error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Consultant Personal Dashboard
+app.get([
+  '/api/analytics/consultant-dashboard',
+  '/analytics/consultant-dashboard',
+], authenticateToken, async (req: any, res) => {
+  try {
+    const userId = req.user.id;
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    const [statsRes, targetsRes, overdueRes, todayFollowupsRes, untouchedRes] = await Promise.all([
+      turso.execute({
+        sql: `
+          SELECT 
+            (SELECT COUNT(*) FROM leads WHERE assigned_consultant_id = ?) as my_total_leads,
+            (SELECT COUNT(*) FROM leads WHERE assigned_consultant_id = ? AND status IN ('NEW', 'ASSIGNED')) as my_pending_leads,
+            (SELECT COUNT(*) FROM calls WHERE consultant_id = ? AND date(created_at) = '${todayStr}') as today_calls,
+            (SELECT COUNT(*) FROM calls WHERE consultant_id = ? AND outcome IN ('CONNECTED', 'INTERESTED', 'QUALIFIED') AND date(created_at) = '${todayStr}') as today_connected,
+            (SELECT COUNT(*) FROM whatsapp_activities WHERE consultant_id = ? AND date(created_at) = '${todayStr}') as today_whatsapp,
+            (SELECT COUNT(*) FROM follow_ups WHERE consultant_id = ? AND status = 'PENDING' AND followup_date = '${todayStr}') as today_followups,
+            (SELECT COUNT(*) FROM follow_ups WHERE consultant_id = ? AND status = 'PENDING' AND followup_date < '${todayStr}') as overdue_followups,
+            (SELECT COUNT(*) FROM potential_handovers WHERE consultant_id = ?) as my_potential_handovers,
+            (SELECT COUNT(*) FROM tasks WHERE consultant_id = ? AND status IN ('PENDING', 'IN_PROGRESS')) as pending_tasks,
+            (SELECT COUNT(*) FROM tasks WHERE consultant_id = ? AND status IN ('PENDING', 'IN_PROGRESS') AND due_date < '${todayStr}') as overdue_tasks
+        `,
+        args: [userId, userId, userId, userId, userId, userId, userId, userId, userId, userId],
+      }),
+      turso.execute({
+        sql: 'SELECT daily_call_target, daily_lead_target, daily_whatsapp_target, daily_followup_target, daily_potential_target FROM users WHERE id = ?',
+        args: [userId],
+      }),
+      turso.execute({
+        sql: `
+          SELECT follow_ups.*, leads.company_name, leads.contact_person, leads.mobile
+          FROM follow_ups
+          JOIN leads ON leads.id = follow_ups.lead_id
+          WHERE follow_ups.consultant_id = ? AND follow_ups.status = 'PENDING' AND follow_ups.followup_date < '${todayStr}'
+          ORDER BY follow_ups.followup_date ASC
+        `,
+        args: [userId],
+      }),
+      turso.execute({
+        sql: `
+          SELECT follow_ups.*, leads.company_name, leads.contact_person, leads.mobile
+          FROM follow_ups
+          JOIN leads ON leads.id = follow_ups.lead_id
+          WHERE follow_ups.consultant_id = ? AND follow_ups.status = 'PENDING' AND follow_ups.followup_date = '${todayStr}'
+          ORDER BY follow_ups.followup_time ASC
+        `,
+        args: [userId],
+      }),
+      turso.execute({
+        sql: `
+          SELECT leads.*
+          FROM leads
+          WHERE leads.assigned_consultant_id = ? AND leads.status IN ('NEW', 'ASSIGNED')
+          ORDER BY leads.id DESC
+          LIMIT 20
+        `,
+        args: [userId],
+      }),
+    ]);
+
+    const stats = statsRes.rows[0] || {};
+    const targets = targetsRes.rows[0] || {};
+
+    res.json({
+      stats,
+      todayMetrics: {
+        calls: Number((stats as any).today_calls || 0),
+        connected: Number((stats as any).today_connected || 0),
+        whatsapp: Number((stats as any).today_whatsapp || 0),
+        followups: Number((stats as any).today_followups || 0),
+        handovers: Number((stats as any).my_potential_handovers || 0),
+      },
+      targets,
+      actionQueue: {
+        overdueFollowups: overdueRes.rows,
+        todayFollowups: todayFollowupsRes.rows,
+        untouchedLeads: untouchedRes.rows,
+      },
+      todayActionQueue: [...overdueRes.rows, ...todayFollowupsRes.rows],
+    });
+  } catch (err: any) {
+    console.error('Consultant dashboard error:', err);
     res.status(500).json({ error: err.message });
   }
 });
