@@ -146,17 +146,17 @@ export const BulkActionModal: React.FC<BulkActionModalProps> = ({
         {/* Dynamic Parameter based on actionType */}
         {actionType === 'assign' && isSuperAdmin && (
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
               Select Business Consultant
             </label>
             <select
               value={selectedConsultant}
               onChange={(e) => setSelectedConsultant(e.target.value)}
-              className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+              className="w-full px-3 py-2.5 text-xs text-slate-900 bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-semibold shadow-sm"
             >
-              <option value="">Unassign / Leave Unassigned</option>
+              <option value="" className="text-slate-900 font-medium">Unassign / Leave Unassigned</option>
               {consultants.filter(c => c.is_active === 1).map((c) => (
-                <option key={c.id} value={c.id}>
+                <option key={c.id} value={c.id} className="text-slate-900 font-medium">
                   {c.name} ({c.email})
                 </option>
               ))}
@@ -166,58 +166,58 @@ export const BulkActionModal: React.FC<BulkActionModalProps> = ({
 
         {actionType === 'status' && (
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
               Target Lead Status
             </label>
             <select
               value={selectedStatus}
               onChange={(e) => setSelectedStatus(e.target.value)}
-              className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+              className="w-full px-3 py-2.5 text-xs text-slate-900 bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-semibold shadow-sm"
             >
-              <option value="ASSIGNED">Assigned</option>
-              <option value="CONTACT_ATTEMPTED">Contact Attempted</option>
-              <option value="CONNECTED">Connected</option>
-              <option value="INTERESTED">Interested</option>
-              <option value="FOLLOW_UP">Follow Up</option>
-              <option value="QUALIFIED">Qualified</option>
-              <option value="NOT_INTERESTED">Not Interested</option>
-              <option value="DND">DND</option>
-              <option value="NURTURE">Nurture</option>
+              <option value="ASSIGNED" className="text-slate-900 font-medium">Assigned</option>
+              <option value="CONTACT_ATTEMPTED" className="text-slate-900 font-medium">Contact Attempted</option>
+              <option value="CONNECTED" className="text-slate-900 font-medium">Connected</option>
+              <option value="INTERESTED" className="text-slate-900 font-medium">Interested</option>
+              <option value="FOLLOW_UP" className="text-slate-900 font-medium">Follow Up</option>
+              <option value="QUALIFIED" className="text-slate-900 font-medium">Qualified</option>
+              <option value="NOT_INTERESTED" className="text-slate-900 font-medium">Not Interested</option>
+              <option value="DND" className="text-slate-900 font-medium">DND</option>
+              <option value="NURTURE" className="text-slate-900 font-medium">Nurture</option>
             </select>
           </div>
         )}
 
         {actionType === 'priority' && (
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
               Target Priority Level
             </label>
             <select
               value={selectedPriority}
               onChange={(e) => setSelectedPriority(e.target.value)}
-              className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+              className="w-full px-3 py-2.5 text-xs text-slate-900 bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-semibold shadow-sm"
             >
-              <option value="HOT">🔥 Hot</option>
-              <option value="HIGH">High</option>
-              <option value="MEDIUM">Medium</option>
-              <option value="LOW">Low</option>
+              <option value="HOT" className="text-slate-900 font-medium">🔥 Hot</option>
+              <option value="HIGH" className="text-slate-900 font-medium">High</option>
+              <option value="MEDIUM" className="text-slate-900 font-medium">Medium</option>
+              <option value="LOW" className="text-slate-900 font-medium">Low</option>
             </select>
           </div>
         )}
 
         {actionType === 'tags' && (
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
               Select Tag to Apply
             </label>
             <select
               value={selectedTagId}
               onChange={(e) => setSelectedTagId(e.target.value)}
-              className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+              className="w-full px-3 py-2.5 text-xs text-slate-900 bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-semibold shadow-sm"
             >
-              <option value="">Select a Tag...</option>
+              <option value="" className="text-slate-900 font-medium">Select a Tag...</option>
               {tags.map((t) => (
-                <option key={t.id} value={t.id}>
+                <option key={t.id} value={t.id} className="text-slate-900 font-medium">
                   {t.name}
                 </option>
               ))}
@@ -227,17 +227,17 @@ export const BulkActionModal: React.FC<BulkActionModalProps> = ({
 
         {actionType === 'business' && isSuperAdmin && (
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
               Select Internal Business Vertical (Admin Only)
             </label>
             <select
               value={selectedBusiness}
               onChange={(e) => setSelectedBusiness(e.target.value)}
-              className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+              className="w-full px-3 py-2.5 text-xs text-slate-900 bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-semibold shadow-sm"
             >
-              <option value="">Select a Business Vertical...</option>
+              <option value="" className="text-slate-900 font-medium">Select a Business Vertical...</option>
               {businesses.map((b) => (
-                <option key={b.id} value={b.id}>
+                <option key={b.id} value={b.id} className="text-slate-900 font-medium">
                   {b.name} ({b.code})
                 </option>
               ))}

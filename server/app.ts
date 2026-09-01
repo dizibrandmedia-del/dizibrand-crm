@@ -97,6 +97,7 @@ app.use('/api/notifications', notificationsRouter);
 app.use('/api/audit-logs', auditLogsRouter);
 app.use('/api/exports', exportsRouter);
 app.use('/api/integrations/google-sheets', googleSheetsRouter);
+app.use('/api/google-sheets', googleSheetsRouter);
 
 // Health check
 app.get('/api/health', (req, res) => {

@@ -107,35 +107,39 @@ export async function syncGoogleSheetConfig(configId: number, options: { rawRows
     rawData = options.rawRows;
   } else {
     // Fetch live from Google Sheets export endpoints
-    const exportUrl = `https://docs.google.com/spreadsheets/d/${config.sheet_id}/export?format=csv&gid=${config.gid}`;
     const gvizUrl = `https://docs.google.com/spreadsheets/d/${config.sheet_id}/gviz/tq?tqx=out:csv&gid=${config.gid}`;
+    const exportUrl = `https://docs.google.com/spreadsheets/d/${config.sheet_id}/export?format=csv&gid=${config.gid}`;
 
     let csvText = '';
     try {
-      const response = await fetch(exportUrl, {
+      const gvizResponse = await fetch(gvizUrl, {
+        signal: AbortSignal.timeout(10000),
         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36' },
       });
-      if (response.ok) {
-        const text = await response.text();
+      if (gvizResponse.ok) {
+        const text = await gvizResponse.text();
         if (!text.includes('<!DOCTYPE html>')) {
           csvText = text;
         }
       }
     } catch (e) {
-      console.warn('Direct CSV export failed, trying gviz endpoint:', e);
+      console.warn('GViz export attempt notice:', e);
     }
 
     if (!csvText) {
       try {
-        const gvizResponse = await fetch(gvizUrl);
-        if (gvizResponse.ok) {
-          const text = await gvizResponse.text();
+        const response = await fetch(exportUrl, {
+          signal: AbortSignal.timeout(10000),
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36' },
+        });
+        if (response.ok) {
+          const text = await response.text();
           if (!text.includes('<!DOCTYPE html>')) {
             csvText = text;
           }
         }
       } catch (e) {
-        console.warn('GViz endpoint failed:', e);
+        console.warn('Direct CSV export failed:', e);
       }
     }
 
@@ -175,23 +179,17 @@ export async function syncGoogleSheetConfig(configId: number, options: { rawRows
     return { totalRows: 0, importedCount: 0, duplicateCount: 0 };
   }
 
-  // Load existing database records for fast deduplication
-  const existingContactKeys = new Set<string>();
+  // Load existing database records for fast deduplication based on Company Name & CIN
+  const existingCompanyNames = new Set<string>();
+  const existingCINs = new Set<string>();
 
-  const allExisting = db.prepare('SELECT cin, mobile, alternate_mobile, company_name, contact_person FROM leads').all() as any[];
+  const allExisting = db.prepare('SELECT cin, company_name FROM leads').all() as any[];
   for (const lead of allExisting) {
-    const mob = cleanPhone(lead.mobile) || cleanPhone(lead.alternate_mobile) || 'N/A';
-    const cin = (lead.cin || '').trim().toUpperCase();
-    const cName = (lead.company_name || '').trim().toLowerCase();
-    const cPerson = (lead.contact_person || '').trim().toLowerCase();
-
-    if (cin) {
-      existingContactKeys.add(`${cin}_${cPerson}_${mob}`);
-      existingContactKeys.add(`${cin}_${mob}`);
-      existingContactKeys.add(`${cin}_${cPerson}`);
-    } else {
-      existingContactKeys.add(`${cName}_${cPerson}_${mob}`);
-      existingContactKeys.add(`${cName}_${mob}`);
+    if (lead.company_name) {
+      existingCompanyNames.add(lead.company_name.trim().toLowerCase());
+    }
+    if (lead.cin) {
+      existingCINs.add(lead.cin.trim().toUpperCase());
     }
   }
 
@@ -201,7 +199,9 @@ export async function syncGoogleSheetConfig(configId: number, options: { rawRows
   let missingCompanyCount = 0;
   let latestIncDate = config.last_synced_incorporation_date || '';
 
-  const fileKeys = new Set<string>();
+  const processedCompanyNames = new Set<string>();
+  const processedCINs = new Set<string>();
+  const companyRecordMap = new Map<string, any>();
 
   // Process rows
   rawData.forEach((row) => {
@@ -211,9 +211,41 @@ export async function syncGoogleSheetConfig(configId: number, options: { rawRows
       row['Company'] || row['Legal Name'] || row['legal_name'] || row['Entity Name'] || row['NAME'] || ''
     ).trim();
 
+    if (!companyName) {
+      missingCompanyCount++;
+      return;
+    }
+
     const cin = String(
       row['entityId'] || row['entity_id'] || row['CIN'] || row['cin'] || row['Cin'] || row['Corporate Identification Number'] || row['CIN_NUMBER'] || ''
     ).trim().toUpperCase();
+
+    const normalizedName = companyName.toLowerCase();
+
+    // Check if duplicate against existing DB or already processed in this batch
+    const isDbDuplicate = existingCompanyNames.has(normalizedName) || (cin && existingCINs.has(cin));
+    const isBatchDuplicate = processedCompanyNames.has(normalizedName) || (cin && processedCINs.has(cin));
+
+    if (isDbDuplicate || isBatchDuplicate) {
+      duplicateCount++;
+      // If in current batch and alternate mobile is not set, enrich it from other director row
+      if (isBatchDuplicate) {
+        const existingRec = companyRecordMap.get(normalizedName) || (cin ? companyRecordMap.get(cin) : null);
+        if (existingRec && !existingRec.alternate_mobile) {
+          const rowMobile = cleanPhone(
+            row['directorMobile'] || row['director_mobile'] || row['Mobile'] || row['mobile'] || row['Mobile Number'] || row['Phone'] ||
+            row['Contact Number'] || row['Director Mobile'] || row['MOBILE'] || row['Phone Number']
+          );
+          if (rowMobile && rowMobile !== existingRec.mobile) {
+            existingRec.alternate_mobile = rowMobile;
+          }
+        }
+      }
+      return;
+    }
+
+    processedCompanyNames.add(normalizedName);
+    if (cin) processedCINs.add(cin);
 
     const dateOfInc = parseDateOfInc(
       row['dateOfIncorporation'] || row['date_of_incorporation'] || row['Date of Incorporation'] || row['DateOfIncorporation'] ||
@@ -250,36 +282,14 @@ export async function syncGoogleSheetConfig(configId: number, options: { rawRows
     const website = String(row['Website'] || row['website'] || '').trim();
 
     const finalMobile = mobile || alternateMobile || 'N/A';
-    const finalCompanyName = companyName || (contactPerson ? `${contactPerson} Ventures` : 'New Entity');
-
-    // Unique contact identity for this director within this company
-    const cinKey = cin ? `${cin}_${contactPerson.toLowerCase()}_${finalMobile}` : `${finalCompanyName.toLowerCase()}_${contactPerson.toLowerCase()}_${finalMobile}`;
-    const cinMobOnlyKey = cin && finalMobile !== 'N/A' ? `${cin}_${finalMobile}` : '';
-
-    let isDuplicate = false;
-    if (existingContactKeys.has(cinKey)) {
-      isDuplicate = true;
-    } else if (cinMobOnlyKey && existingContactKeys.has(cinMobOnlyKey)) {
-      isDuplicate = true;
-    } else if (fileKeys.has(cinKey) || (cinMobOnlyKey && fileKeys.has(cinMobOnlyKey))) {
-      isDuplicate = true;
-    }
-
-    if (isDuplicate) {
-      duplicateCount++;
-      return;
-    }
-
-    fileKeys.add(cinKey);
-    if (cinMobOnlyKey) fileKeys.add(cinMobOnlyKey);
 
     // Track latest incorporation date
     if (dateOfInc && (!latestIncDate || dateOfInc > latestIncDate)) {
       latestIncDate = dateOfInc;
     }
 
-    validRecords.push({
-      company_name: finalCompanyName,
+    const record = {
+      company_name: companyName,
       cin: cin || null,
       company_type: companyType || 'Private Limited',
       industry: industry || null,
@@ -293,7 +303,11 @@ export async function syncGoogleSheetConfig(configId: number, options: { rawRows
       mobile: finalMobile,
       alternate_mobile: alternateMobile || null,
       email: email || null,
-    });
+    };
+
+    companyRecordMap.set(normalizedName, record);
+    if (cin) companyRecordMap.set(cin, record);
+    validRecords.push(record);
   });
 
   // Sort valid records chronologically by incorporation date

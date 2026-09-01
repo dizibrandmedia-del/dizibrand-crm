@@ -178,7 +178,7 @@ googleSheetsRouter.delete('/configs/:id', requireAdmin, (req: AuthRequest, res) 
 });
 
 // 5. Trigger Instant Sync Now (Admin Only)
-googleSheetsRouter.post('/sync-now/:id', requireAdmin, async (req: AuthRequest, res) => {
+const handleSyncNow = async (req: AuthRequest, res: any) => {
   try {
     const configId = Number(req.params.id);
     const result = await syncGoogleSheetConfig(configId, { triggeredBy: req.user?.name || 'Admin' });
@@ -193,7 +193,10 @@ googleSheetsRouter.post('/sync-now/:id', requireAdmin, async (req: AuthRequest, 
     console.error('Sync Google Sheet error:', error);
     return res.status(400).json({ error: error.message || 'Failed to sync Google Sheet' });
   }
-});
+};
+
+googleSheetsRouter.post('/sync-now/:id', requireAdmin, handleSyncNow);
+googleSheetsRouter.post('/configs/:id/sync', requireAdmin, handleSyncNow);
 
 // 6. Public Webhook Endpoint (For Google Apps Script automated daily/onEdit trigger)
 googleSheetsRouter.post('/webhook/:id', async (req, res) => {
