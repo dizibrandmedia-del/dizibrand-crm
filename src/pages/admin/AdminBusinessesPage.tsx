@@ -18,8 +18,8 @@ export const AdminBusinessesPage: React.FC = () => {
   const fetchBusinesses = async () => {
     setIsLoading(true);
     try {
-      const res = await api.businesses.list();
-      setBusinesses(res.businesses);
+      const res: any = await api.businesses.list();
+      setBusinesses(Array.isArray(res) ? res : (res?.businesses || []));
     } catch (err: any) {
       toast.error(err.message || 'Failed to load businesses');
     } finally {

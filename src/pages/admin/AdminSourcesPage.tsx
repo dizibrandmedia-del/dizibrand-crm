@@ -18,8 +18,8 @@ export const AdminSourcesPage: React.FC = () => {
   const fetchSources = async () => {
     setIsLoading(true);
     try {
-      const res = await api.sources.list();
-      setSources(res.sources);
+      const res: any = await api.sources.list();
+      setSources(Array.isArray(res) ? res : (res?.sources || []));
     } catch (err: any) {
       toast.error(err.message || 'Failed to load sources');
     } finally {

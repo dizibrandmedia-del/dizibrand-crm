@@ -63,16 +63,16 @@ export default function GoogleSheetSyncPage() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [confRes, consRes, srcRes, bizRes] = await Promise.all([
-        api.googleSheets.listConfigs(),
-        api.consultants.list(),
-        api.sources.list(),
-        api.businesses.list(),
+      const [confRes, consRes, srcRes, bizRes]: any[] = await Promise.all([
+        api.googleSheets.listConfigs().catch(() => ({ configs: [] })),
+        api.consultants.list().catch(() => ({ consultants: [] })),
+        api.sources.list().catch(() => ({ sources: [] })),
+        api.businesses.list().catch(() => ({ businesses: [] })),
       ]);
-      setConfigs(confRes.configs || []);
-      setConsultants(consRes.consultants || []);
-      setSources(srcRes.sources || []);
-      setBusinesses(bizRes.businesses || []);
+      setConfigs(Array.isArray(confRes) ? confRes : (confRes?.configs || []));
+      setConsultants(Array.isArray(consRes) ? consRes : (consRes?.consultants || consRes?.users || []));
+      setSources(Array.isArray(srcRes) ? srcRes : (srcRes?.sources || []));
+      setBusinesses(Array.isArray(bizRes) ? bizRes : (bizRes?.businesses || []));
     } catch (err: any) {
       console.error('Failed to load Google Sheets configs:', err);
     } finally {

@@ -39,8 +39,8 @@ export const AdminTeamPage: React.FC = () => {
   const fetchConsultants = async () => {
     setIsLoading(true);
     try {
-      const res = await api.consultants.list();
-      setConsultants(res.consultants);
+      const res: any = await api.consultants.list();
+      setConsultants(Array.isArray(res) ? res : (res?.consultants || res?.users || []));
     } catch (err: any) {
       toast.error(err.message || 'Failed to load consultants');
     } finally {
