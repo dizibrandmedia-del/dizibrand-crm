@@ -1,4 +1,4 @@
-import initSqlJs from 'sql.js';
+import { DatabaseSync } from 'node:sqlite';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -8,66 +8,35 @@ import { pullFromTurso } from './tursoSync.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Locate master SQLite buffer
-const candidates = [
-  path.resolve(process.cwd(), 'data/dizibrand_crm.sqlite'),
-  path.resolve(__dirname, '../../data/dizibrand_crm.sqlite'),
-  path.resolve(__dirname, '../data/dizibrand_crm.sqlite'),
-  path.resolve(__dirname, 'data/dizibrand_crm.sqlite'),
-];
-const foundCandidate = candidates.find((c) => fs.existsSync(c));
-let initialBuffer: Buffer | undefined;
-if (foundCandidate) {
+// Ensure persistent or serverless data directory exists
+const isVercel = process.env.VERCEL === '1' || Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME);
+const dataDir = isVercel ? '/tmp/data' : path.resolve(__dirname, '../../data');
+if (!fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir, { recursive: true });
+}
+
+const dbPath = path.join(dataDir, 'dizibrand_crm.sqlite');
+
+// Locate pre-bundled master sqlite file
+if (isVercel && !fs.existsSync(dbPath)) {
   try {
-    initialBuffer = fs.readFileSync(foundCandidate);
+    const candidates = [
+      path.resolve(process.cwd(), 'data/dizibrand_crm.sqlite'),
+      path.resolve(__dirname, '../../data/dizibrand_crm.sqlite'),
+      path.resolve(__dirname, '../data/dizibrand_crm.sqlite'),
+      path.resolve(__dirname, 'data/dizibrand_crm.sqlite'),
+    ];
+    const foundCandidate = candidates.find((c) => fs.existsSync(c));
+    if (foundCandidate) {
+      fs.copyFileSync(foundCandidate, dbPath);
+      console.log('✅ Bundled SQLite database copied to /tmp from', foundCandidate);
+    }
   } catch (e) {
-    console.warn('Could not read master sqlite file:', e);
+    console.warn('Vercel SQLite copy note:', e);
   }
 }
 
-const SQL = await initSqlJs();
-const rawDb = initialBuffer ? new SQL.Database(initialBuffer) : new SQL.Database();
-
-export interface IDatabase {
-  prepare(sql: string): {
-    all(...params: any[]): any[];
-    get(...params: any[]): any;
-    run(...params: any[]): { lastInsertRowid: number; changes: number };
-  };
-  exec(sql: string): void;
-}
-
-export const db: IDatabase = {
-  prepare(sql: string) {
-    return {
-      all(...params: any[]): any[] {
-        const args = params.length === 1 && Array.isArray(params[0]) ? params[0] : params;
-        const stmt = rawDb.prepare(sql);
-        if (args.length > 0) stmt.bind(args);
-        const rows: any[] = [];
-        while (stmt.step()) {
-          rows.push(stmt.getAsObject());
-        }
-        stmt.free();
-        return rows;
-      },
-      get(...params: any[]): any {
-        const rows = this.all(...params);
-        return rows[0];
-      },
-      run(...params: any[]): { lastInsertRowid: number; changes: number } {
-        const args = params.length === 1 && Array.isArray(params[0]) ? params[0] : params;
-        if (args.length > 0) rawDb.run(sql, args);
-        else rawDb.run(sql);
-        const lastId = rawDb.exec('SELECT last_insert_rowid() as id')[0]?.values[0]?.[0] || 0;
-        return { lastInsertRowid: Number(lastId), changes: rawDb.getRowsModified() };
-      },
-    };
-  },
-  exec(sql: string) {
-    rawDb.exec(sql);
-  },
-};
+export const db = new DatabaseSync(dbPath);
 
 export function initializeDatabase() {
   try {
@@ -98,7 +67,7 @@ export function initializeDatabase() {
 
   // Pull latest persistent data from Turso Cloud asynchronously
   setTimeout(() => {
-    pullFromTurso(db as any).catch((e) => console.warn('Turso sync warning:', e));
+    pullFromTurso(db).catch((e) => console.warn('Turso sync warning:', e));
   }, 100);
 
   console.log('Database initialized successfully with complete tables, accounts & indexes.');
