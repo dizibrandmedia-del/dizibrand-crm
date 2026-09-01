@@ -649,7 +649,7 @@ leadsRouter.patch('/:id/status', authMiddleware, (req: AuthRequest, res) => {
 });
 
 // 6. Bulk Lead Actions (Admin Only / Filtered Support)
-leadsRouter.post('/bulk/assign', requireAdmin, (req: AuthRequest, res) => {
+const handleBulkAssign = (req: AuthRequest, res: any) => {
   try {
     const { lead_ids, consultant_id } = req.body;
     if (!Array.isArray(lead_ids) || lead_ids.length === 0) {
@@ -694,10 +694,14 @@ leadsRouter.post('/bulk/assign', requireAdmin, (req: AuthRequest, res) => {
     console.error('Bulk assign error:', error);
     return res.status(500).json({ error: 'Failed to perform bulk assignment' });
   }
-});
+};
+
+leadsRouter.post('/bulk/assign', requireAdmin, handleBulkAssign);
+leadsRouter.post('/assign', requireAdmin, handleBulkAssign);
+leadsRouter.post('/bulk-assign', requireAdmin, handleBulkAssign);
 
 // Bulk Status Change
-leadsRouter.post('/bulk/status', authMiddleware, (req: AuthRequest, res) => {
+const handleBulkStatus = (req: AuthRequest, res: any) => {
   try {
     const user = req.user!;
     const { lead_ids, status } = req.body;
@@ -734,10 +738,13 @@ leadsRouter.post('/bulk/status', authMiddleware, (req: AuthRequest, res) => {
     console.error('Bulk status error:', error);
     return res.status(500).json({ error: 'Failed to perform bulk status update' });
   }
-});
+};
+
+leadsRouter.post('/bulk/status', authMiddleware, handleBulkStatus);
+leadsRouter.post('/bulk-status', authMiddleware, handleBulkStatus);
 
 // Bulk Priority Change
-leadsRouter.post('/bulk/priority', authMiddleware, (req: AuthRequest, res) => {
+const handleBulkPriority = (req: AuthRequest, res: any) => {
   try {
     const user = req.user!;
     const { lead_ids, priority } = req.body;
@@ -763,10 +770,13 @@ leadsRouter.post('/bulk/priority', authMiddleware, (req: AuthRequest, res) => {
     console.error('Bulk priority error:', error);
     return res.status(500).json({ error: 'Failed to update priority' });
   }
-});
+};
+
+leadsRouter.post('/bulk/priority', authMiddleware, handleBulkPriority);
+leadsRouter.post('/bulk-priority', authMiddleware, handleBulkPriority);
 
 // Bulk Add Tags
-leadsRouter.post('/bulk/tags', authMiddleware, (req: AuthRequest, res) => {
+const handleBulkTags = (req: AuthRequest, res: any) => {
   try {
     const { lead_ids, tag_ids } = req.body;
     if (!Array.isArray(lead_ids) || !Array.isArray(tag_ids) || lead_ids.length === 0 || tag_ids.length === 0) {
@@ -785,10 +795,13 @@ leadsRouter.post('/bulk/tags', authMiddleware, (req: AuthRequest, res) => {
     console.error('Bulk tag error:', error);
     return res.status(500).json({ error: 'Failed to add tags' });
   }
-});
+};
+
+leadsRouter.post('/bulk/tags', authMiddleware, handleBulkTags);
+leadsRouter.post('/bulk-tags', authMiddleware, handleBulkTags);
 
 // Bulk Internal Business Mapping (ADMIN ONLY)
-leadsRouter.post('/bulk/business', requireAdmin, (req: AuthRequest, res) => {
+const handleBulkBusiness = (req: AuthRequest, res: any) => {
   try {
     const { lead_ids, business_id } = req.body;
     if (!Array.isArray(lead_ids) || lead_ids.length === 0 || !business_id) {
@@ -802,9 +815,12 @@ leadsRouter.post('/bulk/business', requireAdmin, (req: AuthRequest, res) => {
 
     logAudit(req, 'BULK_BUSINESS_MAPPING', 'leads', null, null, { count: lead_ids.length, business_id });
 
-    return res.json({ message: `Mapped ${lead_ids.length} leads to internal business vertical` });
+    return res.json({ message: `Mapped ${lead_ids.length} leads to internal business` });
   } catch (error: any) {
-    console.error('Bulk business mapping error:', error);
-    return res.status(500).json({ error: 'Failed to map internal business' });
+    console.error('Bulk business error:', error);
+    return res.status(500).json({ error: 'Failed to map business' });
   }
-});
+};
+
+leadsRouter.post('/bulk/business', requireAdmin, handleBulkBusiness);
+leadsRouter.post('/bulk-business', requireAdmin, handleBulkBusiness);
