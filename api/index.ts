@@ -361,7 +361,6 @@ app.get(['/api/settings', '/settings'], authenticateToken, async (req, res) => {
   }
 });
 
-// 9. Google Sheet Integrations
 app.get(['/api/integrations/google-sheets', '/integrations/google-sheets', '/api/google-sheets', '/google-sheets'], authenticateToken, async (req, res) => {
   try {
     const result = await turso.execute('SELECT * FROM google_sheet_sync_configs ORDER BY id DESC');
@@ -371,4 +370,8 @@ app.get(['/api/integrations/google-sheets', '/integrations/google-sheets', '/api
   }
 });
 
-export default app;
+export default function handler(req: any, res: any) {
+  return app(req, res);
+}
+
+

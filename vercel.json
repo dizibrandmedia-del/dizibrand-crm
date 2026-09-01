@@ -5,7 +5,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/api/[...all]"
+      "destination": "/api/index"
     },
     {
       "source": "/api",
