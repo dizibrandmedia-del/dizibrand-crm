@@ -1,6 +1,6 @@
-import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { db } from '../db/database.js';
+import { pushToTurso } from '../db/tursoSync.js';
 import { requireAdmin, AuthRequest } from '../middleware/auth.js';
 import { logAudit } from '../middleware/audit.js';
 
@@ -93,6 +93,26 @@ consultantsRouter.post('/', requireAdmin, (req: AuthRequest, res) => {
 
     logAudit(req, 'CREATE_CONSULTANT', 'users', result.lastInsertRowid, null, { name, email, mobile });
 
+    pushToTurso(
+      `INSERT OR REPLACE INTO users (
+        id, name, email, password_hash, role, mobile, is_active,
+        daily_call_target, daily_lead_target, daily_whatsapp_target,
+        daily_followup_target, daily_potential_target
+      ) VALUES (?, ?, ?, ?, 'CONSULTANT', ?, 1, ?, ?, ?, ?, ?)`,
+      [
+        Number(result.lastInsertRowid),
+        name,
+        email.toLowerCase(),
+        passwordHash,
+        mobile || null,
+        Number(daily_call_target) || 25,
+        Number(daily_lead_target) || 50,
+        Number(daily_whatsapp_target) || 20,
+        Number(daily_followup_target) || 15,
+        Number(daily_potential_target) || 5,
+      ]
+    );
+
     return res.status(201).json({
       message: 'Business Consultant created successfully',
       consultant_id: result.lastInsertRowid,
@@ -177,6 +197,35 @@ const handleUpdateConsultant = (req: AuthRequest, res: any) => {
       consultantId
     );
 
+    pushToTurso(
+      `UPDATE users SET 
+        name = ?,
+        email = ?,
+        mobile = ?,
+        password_hash = ?,
+        is_active = ?,
+        daily_call_target = ?,
+        daily_lead_target = ?,
+        daily_whatsapp_target = ?,
+        daily_followup_target = ?,
+        daily_potential_target = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?`,
+      [
+        updatedName,
+        updatedEmail,
+        updatedMobile,
+        passwordHash,
+        updatedIsActive,
+        updatedCallTarget,
+        updatedLeadTarget,
+        updatedWhatsappTarget,
+        updatedFollowupTarget,
+        updatedPotentialTarget,
+        consultantId,
+      ]
+    );
+
     logAudit(req, 'UPDATE_CONSULTANT', 'users', consultantId, existing, { name: updatedName, email: updatedEmail, is_active: updatedIsActive, daily_call_target: updatedCallTarget });
 
     return res.json({ message: 'Consultant details updated successfully' });
@@ -216,6 +265,11 @@ consultantsRouter.delete('/:id', requireAdmin, (req: AuthRequest, res) => {
           WHERE assigned_consultant_id = ?
         `).run(reassignTo, consultantId);
 
+        pushToTurso(
+          'UPDATE leads SET assigned_consultant_id = ?, updated_at = CURRENT_TIMESTAMP WHERE assigned_consultant_id = ?',
+          [reassignTo, consultantId]
+        );
+
         // Reassign pending followups
         db.prepare(`
           UPDATE follow_ups SET 
@@ -223,6 +277,11 @@ consultantsRouter.delete('/:id', requireAdmin, (req: AuthRequest, res) => {
             updated_at = CURRENT_TIMESTAMP
           WHERE consultant_id = ? AND status = 'PENDING'
         `).run(reassignTo, consultantId);
+
+        pushToTurso(
+          'UPDATE follow_ups SET consultant_id = ?, updated_at = CURRENT_TIMESTAMP WHERE consultant_id = ? AND status = ?',
+          [reassignTo, consultantId, 'PENDING']
+        );
       } else {
         // Unassign leads back to unassigned pool
         db.prepare(`
@@ -233,6 +292,11 @@ consultantsRouter.delete('/:id', requireAdmin, (req: AuthRequest, res) => {
           WHERE assigned_consultant_id = ? AND status NOT IN ('WON', 'LOST')
         `).run(consultantId);
 
+        pushToTurso(
+          "UPDATE leads SET assigned_consultant_id = NULL, status = 'NEW', updated_at = CURRENT_TIMESTAMP WHERE assigned_consultant_id = ? AND status NOT IN ('WON', 'LOST')",
+          [consultantId]
+        );
+
         // Cancel pending followups
         db.prepare(`
           UPDATE follow_ups SET 
@@ -240,14 +304,22 @@ consultantsRouter.delete('/:id', requireAdmin, (req: AuthRequest, res) => {
             updated_at = CURRENT_TIMESTAMP
           WHERE consultant_id = ? AND status = 'PENDING'
         `).run(consultantId);
+
+        pushToTurso(
+          "UPDATE follow_ups SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP WHERE consultant_id = ? AND status = 'PENDING'",
+          [consultantId]
+        );
       }
 
       // Remove tasks and notifications
       db.prepare('DELETE FROM tasks WHERE consultant_id = ?').run(consultantId);
       db.prepare('DELETE FROM notifications WHERE user_id = ?').run(consultantId);
+      pushToTurso('DELETE FROM tasks WHERE consultant_id = ?', [consultantId]);
+      pushToTurso('DELETE FROM notifications WHERE user_id = ?', [consultantId]);
 
       // Delete user
       db.prepare('DELETE FROM users WHERE id = ?').run(consultantId);
+      pushToTurso('DELETE FROM users WHERE id = ?', [consultantId]);
 
       db.exec('COMMIT;');
 

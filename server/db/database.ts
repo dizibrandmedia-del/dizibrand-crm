@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import bcrypt from 'bcryptjs';
+import { pullFromTurso } from './tursoSync.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -510,6 +511,9 @@ export function initializeDatabase() {
   } catch (seedErr) {
     console.warn('Auto-seed core data notice:', seedErr);
   }
+
+  // Pull latest persistent data from Turso Cloud
+  pullFromTurso(db).catch((e) => console.warn('Turso sync warning:', e));
 
   console.log('Database initialized successfully with complete tables, accounts & indexes.');
 }

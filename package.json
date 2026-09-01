@@ -16,6 +16,7 @@
     "test:crm": "tsx test-crm.ts"
   },
   "dependencies": {
+    "@libsql/client": "^0.17.4",
     "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
     "cors": "^2.8.5",
