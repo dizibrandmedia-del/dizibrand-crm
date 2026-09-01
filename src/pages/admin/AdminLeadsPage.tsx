@@ -47,16 +47,16 @@ export const AdminLeadsPage: React.FC = () => {
 
   const fetchAuxData = async () => {
     try {
-      const [cRes, bRes, sRes, tRes] = await Promise.all([
-        api.consultants.list(),
-        api.businesses.list(),
-        api.sources.list(),
-        api.tags.list(),
+      const [cRes, bRes, sRes, tRes]: any[] = await Promise.all([
+        api.consultants.list().catch(() => ({ consultants: [] })),
+        api.businesses.list().catch(() => ({ businesses: [] })),
+        api.sources.list().catch(() => ({ sources: [] })),
+        api.tags.list().catch(() => ({ tags: [] })),
       ]);
-      setConsultants(cRes.consultants);
-      setBusinesses(bRes.businesses);
-      setSources(sRes.sources);
-      setTags(tRes.tags);
+      setConsultants(Array.isArray(cRes) ? cRes : (cRes?.consultants || cRes?.users || []));
+      setBusinesses(Array.isArray(bRes) ? bRes : (bRes?.businesses || []));
+      setSources(Array.isArray(sRes) ? sRes : (sRes?.sources || []));
+      setTags(Array.isArray(tRes) ? tRes : (tRes?.tags || []));
     } catch (err) {
       console.error('Failed to load auxiliary data:', err);
     }

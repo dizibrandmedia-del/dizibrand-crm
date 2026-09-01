@@ -155,7 +155,7 @@ export const BulkActionModal: React.FC<BulkActionModalProps> = ({
               className="w-full px-3 py-2.5 text-xs text-slate-900 bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-semibold shadow-sm"
             >
               <option value="" className="text-slate-900 font-medium">Unassign / Leave Unassigned</option>
-              {consultants.filter(c => c.is_active === 1).map((c) => (
+              {consultants.filter(c => Boolean(c.is_active)).map((c) => (
                 <option key={c.id} value={c.id} className="text-slate-900 font-medium">
                   {c.name} ({c.email})
                 </option>

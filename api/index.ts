@@ -411,6 +411,164 @@ app.get(['/api/leads', '/leads'], authenticateToken, async (req: any, res) => {
   }
 });
 
+// Bulk operations & Single Lead Updates
+app.post(['/api/leads/assign', '/leads/assign'], authenticateToken, async (req, res) => {
+  try {
+    const { lead_ids, consultant_id } = req.body;
+    if (!Array.isArray(lead_ids) || lead_ids.length === 0) {
+      return res.status(400).json({ error: 'lead_ids array required' });
+    }
+    const placeholders = lead_ids.map(() => '?').join(',');
+    await turso.execute({
+      sql: `UPDATE leads SET assigned_consultant_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN (${placeholders})`,
+      args: [consultant_id ? Number(consultant_id) : null, ...lead_ids],
+    });
+    res.json({ message: `Successfully assigned ${lead_ids.length} leads` });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post(['/api/leads/bulk-status', '/leads/bulk-status'], authenticateToken, async (req, res) => {
+  try {
+    const { lead_ids, status } = req.body;
+    if (!Array.isArray(lead_ids) || lead_ids.length === 0) {
+      return res.status(400).json({ error: 'lead_ids array required' });
+    }
+    const placeholders = lead_ids.map(() => '?').join(',');
+    await turso.execute({
+      sql: `UPDATE leads SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN (${placeholders})`,
+      args: [status, ...lead_ids],
+    });
+    res.json({ message: `Successfully updated status for ${lead_ids.length} leads` });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post(['/api/leads/bulk-priority', '/leads/bulk-priority'], authenticateToken, async (req, res) => {
+  try {
+    const { lead_ids, priority } = req.body;
+    if (!Array.isArray(lead_ids) || lead_ids.length === 0) {
+      return res.status(400).json({ error: 'lead_ids array required' });
+    }
+    const placeholders = lead_ids.map(() => '?').join(',');
+    await turso.execute({
+      sql: `UPDATE leads SET priority = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN (${placeholders})`,
+      args: [priority, ...lead_ids],
+    });
+    res.json({ message: `Successfully updated priority for ${lead_ids.length} leads` });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post(['/api/leads/bulk-business', '/leads/bulk-business'], authenticateToken, async (req, res) => {
+  try {
+    const { lead_ids, business_id } = req.body;
+    if (!Array.isArray(lead_ids) || lead_ids.length === 0) {
+      return res.status(400).json({ error: 'lead_ids array required' });
+    }
+    const placeholders = lead_ids.map(() => '?').join(',');
+    await turso.execute({
+      sql: `UPDATE leads SET internal_business_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN (${placeholders})`,
+      args: [business_id ? Number(business_id) : null, ...lead_ids],
+    });
+    res.json({ message: `Successfully mapped ${lead_ids.length} leads to business vertical` });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post(['/api/leads/bulk-tags', '/leads/bulk-tags'], authenticateToken, async (req, res) => {
+  try {
+    const { lead_ids, tag_ids } = req.body;
+    if (!Array.isArray(lead_ids) || lead_ids.length === 0) {
+      return res.status(400).json({ error: 'lead_ids array required' });
+    }
+    if (Array.isArray(tag_ids) && tag_ids.length > 0) {
+      const stmts: any[] = [];
+      for (const leadId of lead_ids) {
+        for (const tagId of tag_ids) {
+          stmts.push({
+            sql: 'INSERT OR IGNORE INTO lead_tags (lead_id, tag_id) VALUES (?, ?)',
+            args: [leadId, tagId],
+          });
+        }
+      }
+      if (stmts.length > 0) {
+        await turso.batch(stmts, 'write');
+      }
+    }
+    res.json({ message: `Successfully added tags to ${lead_ids.length} leads` });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch(['/api/leads/:id', '/leads/:id'], authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      status, priority, assigned_consultant_id, internal_business_id,
+      notes, contact_person, mobile, alternate_mobile, email, company_name
+    } = req.body;
+
+    await turso.execute({
+      sql: `
+        UPDATE leads SET
+          status = COALESCE(?, status),
+          priority = COALESCE(?, priority),
+          assigned_consultant_id = COALESCE(?, assigned_consultant_id),
+          internal_business_id = COALESCE(?, internal_business_id),
+          notes = COALESCE(?, notes),
+          contact_person = COALESCE(?, contact_person),
+          mobile = COALESCE(?, mobile),
+          alternate_mobile = COALESCE(?, alternate_mobile),
+          email = COALESCE(?, email),
+          company_name = COALESCE(?, company_name),
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `,
+      args: [
+        status || null, priority || null,
+        assigned_consultant_id !== undefined ? assigned_consultant_id : null,
+        internal_business_id !== undefined ? internal_business_id : null,
+        notes || null, contact_person || null, mobile || null,
+        alternate_mobile || null, email || null, company_name || null, id
+      ],
+    });
+
+    res.json({ message: 'Lead updated successfully' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Tags Endpoints
+app.get(['/api/tags', '/tags'], authenticateToken, async (req, res) => {
+  try {
+    const result = await turso.execute('SELECT * FROM tags ORDER BY id ASC');
+    res.json({ tags: result.rows });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post(['/api/tags', '/tags'], authenticateToken, async (req, res) => {
+  try {
+    const { name, color = '#6366f1' } = req.body;
+    if (!name) return res.status(400).json({ error: 'Tag name required' });
+    const result = await turso.execute({
+      sql: 'INSERT INTO tags (name, color, created_at) VALUES (?, ?, CURRENT_TIMESTAMP) RETURNING id, name, color',
+      args: [name.trim(), color],
+    });
+    res.status(201).json({ message: 'Tag created', tag: result.rows[0], tag_id: result.rows[0]?.id });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 7. Analytics Dashboard (Super Admin & Executive Command Center)
 app.get([
   '/api/analytics/admin-dashboard',
