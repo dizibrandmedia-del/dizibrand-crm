@@ -1,3 +1,3 @@
-import app from '../server/app.ts';
+import handler from './index.ts';
 
-export default app;
+export default handler;
