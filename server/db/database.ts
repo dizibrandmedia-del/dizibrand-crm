@@ -1,9 +1,17 @@
-import { DatabaseSync } from 'node:sqlite';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import bcrypt from 'bcryptjs';
 import { pullFromTurso } from './tursoSync.js';
+
+let DatabaseClass: any;
+try {
+  const nodeSqlite = await import('node:sqlite');
+  DatabaseClass = nodeSqlite.DatabaseSync;
+} catch {
+  const betterSqlite = await import('better-sqlite3');
+  DatabaseClass = betterSqlite.default || betterSqlite;
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -35,7 +43,7 @@ if (isVercel) {
   }
 }
 
-export const db = new DatabaseSync(dbPath);
+export const db = new DatabaseClass(dbPath);
 
 export function initializeDatabase() {
   // Enable WAL mode & foreign keys for high concurrent performance
