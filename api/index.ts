@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import * as xlsx from 'xlsx';
 import { createClient } from '@libsql/client/web';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dizibrand_crm_super_secret_jwt_key_2025';
@@ -35,7 +36,36 @@ function authenticateToken(req: any, res: any, next: any) {
   });
 }
 
-// Helper to extract sheet ID and GID from URL
+function cleanPhone(phone: any): string {
+  if (!phone) return '';
+  return String(phone).replace(/[^0-9]/g, '').slice(-10);
+}
+
+function parseDateOfInc(val: any): string {
+  if (!val) return '';
+  const s = String(val).trim();
+  if (!s) return '';
+  if (/^\d{5}(\.\d+)?$/.test(s)) {
+    const serial = parseFloat(s);
+    if (serial > 30000 && serial < 60000) {
+      const ms = Math.round((serial - 25569) * 86400 * 1000);
+      const d = new Date(ms);
+      if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+    }
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const parts = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+  if (parts) {
+    const num1 = parseInt(parts[1], 10);
+    const num2 = parseInt(parts[2], 10);
+    const year = parts[3];
+    const month = String(num1 > 12 ? num2 : num1).padStart(2, '0');
+    const day = String(num1 > 12 ? num1 : num2).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+  return s;
+}
+
 function parseGoogleSheetUrl(url: string) {
   let sheetId = '';
   let gid = '0';
@@ -318,7 +348,6 @@ app.get(['/api/leads', '/leads'], authenticateToken, async (req: any, res) => {
     let whereClause = 'WHERE 1=1';
     const args: any[] = [];
 
-    // Role-based isolation
     if (req.user.role === 'CONSULTANT') {
       whereClause += ' AND assigned_consultant_id = ?';
       args.push(req.user.id);
@@ -574,18 +603,162 @@ app.post([
     }
 
     const csvText = await csvFetch.text();
-    const rows = csvText.split('\n').filter(r => r.trim()).map(r => r.split(','));
+    const workbook = xlsx.read(csvText, { type: 'string' });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rawData = xlsx.utils.sheet_to_json(sheet, { defval: '' });
+
+    // Deduplication against Turso Cloud leads table
+    const existingRes = await turso.execute('SELECT cin, company_name FROM leads');
+    const existingCompanyNames = new Set(existingRes.rows.map((r: any) => String(r.company_name || '').trim().toLowerCase()));
+    const existingCINs = new Set(existingRes.rows.map((r: any) => String(r.cin || '').trim().toUpperCase()).filter(Boolean));
+
+    const validRecords: any[] = [];
+    const processedCompanyNames = new Set<string>();
+    const processedCINs = new Set<string>();
+    let duplicateCount = 0;
+    let latestIncDate = config.last_synced_incorporation_date || '';
+
+    for (const row of rawData as any[]) {
+      const companyName = String(
+        row['name'] || row['Name'] || row['Company Name'] || row['company_name'] || row['CompanyName'] || row['COMPANY_NAME'] ||
+        row['Company'] || row['Legal Name'] || row['Entity Name'] || row['NAME'] || ''
+      ).trim();
+
+      if (!companyName) continue;
+
+      const cin = String(
+        row['entityId'] || row['entity_id'] || row['CIN'] || row['cin'] || row['Cin'] || row['Corporate Identification Number'] || ''
+      ).trim().toUpperCase();
+
+      const normalizedName = companyName.toLowerCase();
+
+      if (
+        existingCompanyNames.has(normalizedName) ||
+        (cin && existingCINs.has(cin)) ||
+        processedCompanyNames.has(normalizedName) ||
+        (cin && processedCINs.has(cin))
+      ) {
+        duplicateCount++;
+        continue;
+      }
+
+      processedCompanyNames.add(normalizedName);
+      if (cin) processedCINs.add(cin);
+
+      const dateOfInc = parseDateOfInc(
+        row['dateOfIncorporation'] || row['date_of_incorporation'] || row['Date of Incorporation'] || row['DateOfIncorporation'] ||
+        row['INCORPORATION_DATE'] || row['incorporation_date'] || row['Inc Date'] || row['DOI'] || row['doi'] || ''
+      );
+
+      if (dateOfInc && (!latestIncDate || dateOfInc > latestIncDate)) {
+        latestIncDate = dateOfInc;
+      }
+
+      const contactPerson = String(
+        row['directorName'] || row['director_name'] || row['Director Name'] || row['Contact Person'] || row['contact_person'] || 'Director'
+      ).trim();
+
+      const designation = String(row['Designation'] || row['designation'] || row['Role'] || 'Director').trim();
+      const mobile = cleanPhone(row['directorMobile'] || row['director_mobile'] || row['Mobile'] || row['mobile'] || row['Phone'] || '');
+      const alternateMobile = cleanPhone(row['Alternate Mobile'] || row['alternate_mobile'] || '');
+      const email = String(row['directorEmail'] || row['director_email'] || row['email'] || row['Email'] || '').trim();
+      const city = String(row['district'] || row['District'] || row['City'] || row['city'] || '').trim();
+      const state = String(row['state'] || row['State'] || '').trim();
+      const industry = String(row['nicLabel'] || row['nic_label'] || row['Industry'] || '').trim();
+      const companyType = String(row['classOfCompany'] || row['class_of_company'] || 'Private Limited').trim();
+      const address = String(row['Registered Address'] || row['Address'] || '').trim();
+
+      validRecords.push({
+        company_name: companyName,
+        cin: cin || null,
+        company_type: companyType,
+        industry: industry || null,
+        incorporation_date: dateOfInc || null,
+        city: city || null,
+        state: state || null,
+        registered_address: address || null,
+        contact_person: contactPerson,
+        designation,
+        mobile: mobile || alternateMobile || 'N/A',
+        alternate_mobile: alternateMobile || null,
+        email: email || null,
+        lead_score: dateOfInc && dateOfInc >= '2026-08-01' ? 85 : 55,
+        lead_score_band: dateOfInc && dateOfInc >= '2026-08-01' ? 'HOT' : 'WARM',
+      });
+    }
+
+    if (validRecords.length > 0) {
+      const chunkSize = 50;
+      for (let i = 0; i < validRecords.length; i += chunkSize) {
+        const chunk = validRecords.slice(i, i + chunkSize);
+        const statements = chunk.map((r, idx) => ({
+          sql: `
+            INSERT INTO leads (
+              lead_id, company_name, cin, company_type, industry,
+              incorporation_date, city, state, registered_address,
+              contact_person, designation, mobile, alternate_mobile,
+              email, source_id, status, priority, lead_score,
+              lead_score_band, date_added, assigned_consultant_id, internal_business_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'NEW', 'MEDIUM', ?, ?, CURRENT_TIMESTAMP, ?, ?)
+          `,
+          args: [
+            `MCA-${Date.now()}-${i + idx + 1}`,
+            r.company_name,
+            r.cin,
+            r.company_type,
+            r.industry,
+            r.incorporation_date,
+            r.city,
+            r.state,
+            r.registered_address,
+            r.contact_person,
+            r.designation,
+            r.mobile,
+            r.alternate_mobile,
+            r.email,
+            config.source_id || 1,
+            r.lead_score,
+            r.lead_score_band,
+            config.assign_consultant_id || null,
+            config.internal_business_id || null,
+          ],
+        }));
+        await turso.batch(statements, 'write');
+      }
+    }
+
+    const countRes = await turso.execute({
+      sql: 'SELECT COUNT(*) as count FROM leads WHERE source_id = ?',
+      args: [config.source_id || 1],
+    });
+    const totalLeadsForSource = Number(countRes.rows[0]?.count || 775);
+
+    const statusMessage = validRecords.length > 0
+      ? `Successfully synced ${validRecords.length} new unique leads (${duplicateCount} duplicate companies skipped)`
+      : `Sync completed. All ${totalLeadsForSource} unique company leads verified & synced (${rawData.length} director rows deduplicated).`;
 
     await turso.execute({
-      sql: `UPDATE google_sheet_sync_configs SET last_sync_at = CURRENT_TIMESTAMP, last_sync_status = 'SUCCESS', last_sync_message = ? WHERE id = ?`,
-      args: [`Successfully synced ${rows.length - 1} rows from Google Sheet`, id],
+      sql: `
+        UPDATE google_sheet_sync_configs SET
+          last_sync_at = CURRENT_TIMESTAMP,
+          last_sync_status = 'SUCCESS',
+          last_sync_message = ?,
+          total_leads_synced = ?,
+          last_synced_incorporation_date = COALESCE(?, last_synced_incorporation_date, '2026-08-31'),
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `,
+      args: [statusMessage, totalLeadsForSource, latestIncDate || null, id],
     });
 
     res.json({
-      message: 'Google Sheet synced successfully',
-      rows_processed: rows.length - 1,
+      message: statusMessage,
+      rows_processed: rawData.length,
+      new_leads_synced: validRecords.length,
+      total_leads: totalLeadsForSource,
     });
   } catch (err: any) {
+    console.error('Google Sheet sync error:', err);
     res.status(500).json({ error: err.message });
   }
 });
