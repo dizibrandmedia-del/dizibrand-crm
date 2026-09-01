@@ -36,7 +36,7 @@ function authenticateToken(req: any, res: any, next: any) {
 }
 
 // 1. Health Check
-app.get(['/api/health', '/health'], async (req, res) => {
+app.get(['/', '/api', '/api/health', '/health'], async (req, res) => {
   try {
     const dbTest = await turso.execute('SELECT 1 as alive');
     res.json({
@@ -51,7 +51,7 @@ app.get(['/api/health', '/health'], async (req, res) => {
 });
 
 // 2. Auth Endpoints
-app.post(['/api/auth/login', '/auth/login'], async (req, res) => {
+app.post(['/api/auth/login', '/auth/login', '/login'], async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) {
