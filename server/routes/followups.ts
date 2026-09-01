@@ -41,7 +41,8 @@ followupsRouter.get('/', authMiddleware, (req: AuthRequest, res) => {
       conditions.push('follow_ups.followup_date > ?');
       params.push(todayStr);
     } else if (view === 'hot') {
-      conditions.push('follow_ups.priority = "HOT"');
+      conditions.push('follow_ups.priority = ?');
+      params.push('HOT');
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
