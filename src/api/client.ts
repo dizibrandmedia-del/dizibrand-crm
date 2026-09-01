@@ -23,7 +23,7 @@ import {
   LeadActivity,
 } from '../types/index.js';
 
-const API_BASE = '/api';
+const API_BASE = ((import.meta as any).env?.VITE_API_BASE_URL as string) || '/api';
 
 function getAuthToken(): string | null {
   return localStorage.getItem('dizibrand_token') || localStorage.getItem('token');
