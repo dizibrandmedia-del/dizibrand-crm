@@ -31,8 +31,12 @@ import { googleSheetsRouter } from './routes/googleSheets.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Initialize DB schema & indexes
-initializeDatabase();
+// Initialize DB schema & indexes safely
+try {
+  initializeDatabase();
+} catch (e) {
+  console.warn('initializeDatabase warning:', e);
+}
 
 // Pre-seed default Google Sheet config if not present
 try {
