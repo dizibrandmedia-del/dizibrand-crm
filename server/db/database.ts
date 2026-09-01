@@ -2,6 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import bcrypt from 'bcryptjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,10 +19,15 @@ const dbPath = path.join(dataDir, 'dizibrand_crm.sqlite');
 // If in serverless environment, copy bundled database to /tmp if not already present
 if (isVercel) {
   try {
-    const bundledDbPath = path.resolve(process.cwd(), 'data/dizibrand_crm.sqlite');
-    if (fs.existsSync(bundledDbPath) && !fs.existsSync(dbPath)) {
-      fs.copyFileSync(bundledDbPath, dbPath);
-      console.log('✅ Bundled SQLite database copied to /tmp');
+    const candidates = [
+      path.resolve(process.cwd(), 'data/dizibrand_crm.sqlite'),
+      path.resolve(__dirname, '../../data/dizibrand_crm.sqlite'),
+      path.resolve(__dirname, '../data/dizibrand_crm.sqlite'),
+    ];
+    const foundCandidate = candidates.find((c) => fs.existsSync(c));
+    if (foundCandidate && !fs.existsSync(dbPath)) {
+      fs.copyFileSync(foundCandidate, dbPath);
+      console.log('✅ Bundled SQLite database copied to /tmp from', foundCandidate);
     }
   } catch (e) {
     console.warn('Vercel SQLite copy note:', e);
@@ -430,5 +436,80 @@ export function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_sheet_logs_config ON google_sheet_sync_logs(config_id);
   `);
 
-  console.log('Database initialized successfully with complete tables & indexes.');
+  // Auto-seed / Sync Core System Accounts & Configs
+  try {
+    const salt = bcrypt.genSaltSync(10);
+    const adminPassword = bcrypt.hashSync('Admin@123456', salt);
+    const consultantPassword = bcrypt.hashSync('Consultant@123456', salt);
+
+    const insertOrUpdateUser = db.prepare(`
+      INSERT INTO users (id, name, email, password_hash, role, mobile, is_active, daily_call_target, daily_lead_target, daily_whatsapp_target, daily_followup_target, daily_potential_target)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(email) DO UPDATE SET
+        password_hash = excluded.password_hash,
+        name = excluded.name,
+        mobile = excluded.mobile,
+        is_active = 1
+    `);
+
+    insertOrUpdateUser.run(1, 'Super Admin', 'admin@dizibrand.com', adminPassword, 'SUPER_ADMIN', '+91 9876543210', 1, 0, 0, 0, 0, 0);
+    insertOrUpdateUser.run(2, 'Shraddha', 'shraddha@dizibrandmedia.com', consultantPassword, 'CONSULTANT', '+91 7081520938', 1, 100, 50, 50, 15, 5);
+    insertOrUpdateUser.run(3, 'Vansh Gupta', 'vansh@dizibrandmedia.com', consultantPassword, 'CONSULTANT', '+91 9335227985', 1, 100, 50, 50, 15, 5);
+    insertOrUpdateUser.run(4, 'Amisha', 'amisha@dizibrandmedia.com', consultantPassword, 'CONSULTANT', '+91 7755080466', 1, 100, 50, 50, 15, 5);
+
+    // Businesses
+    const insertBusiness = db.prepare(`
+      INSERT OR IGNORE INTO businesses (id, name, code, description, is_active)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    insertBusiness.run(1, 'Dizibrand', 'DIZI', 'Digital Marketing, Performance Ads & Brand Strategy', 1);
+    insertBusiness.run(2, 'Strategic HR', 'STRAT_HR', 'Executive Search, Recruitment & HR Advisory', 1);
+    insertBusiness.run(3, 'Fyntrust', 'FYN', 'Financial Advisory, Accounting, Taxation & Compliance', 1);
+    insertBusiness.run(4, 'No Brokerage', 'NO_BROK', 'Commercial Leasing & Real Estate Advisory', 1);
+
+    // Lead Sources
+    const insertSource = db.prepare(`
+      INSERT OR IGNORE INTO lead_sources (id, name, code, is_system, is_active)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    const sources = [
+      [1, 'MCA Database', 'MCA', 1],
+      [2, 'Social Media', 'SOC_MEDIA', 1],
+      [3, 'Facebook', 'FB_ADS', 1],
+      [4, 'Instagram', 'INSTA_ADS', 1],
+      [5, 'LinkedIn', 'LINKEDIN', 1],
+      [6, 'Google Ads', 'GOOGLE_ADS', 1],
+      [7, 'Website', 'WEBSITE', 1],
+      [8, 'WhatsApp', 'WHATSAPP', 1],
+      [9, 'Referral', 'REFERRAL', 1],
+      [10, 'Calling', 'COLD_CALL', 1],
+      [11, 'Existing Client', 'EXISTING_CLIENT', 1],
+      [12, 'Manual Entry', 'MANUAL', 1],
+      [13, 'Other', 'OTHER', 1],
+    ];
+    for (const s of sources) {
+      insertSource.run(s[0], s[1], s[2], s[3], 1);
+    }
+
+    // Scoring Rules
+    const insertScoringRule = db.prepare(`
+      INSERT OR IGNORE INTO scoring_rules (id, criterion_key, criterion_name, category, weight, is_active)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    const scoringRules = [
+      [1, 'RELEVANT_INDUSTRY', 'Target Industry Match (IT/Fintech/Real Estate/Manufacturing)', 'FIT', 15],
+      [2, 'DECISION_MAKER', 'Decision Maker Contacted (Founder/Director/CXO)', 'CONTACT', 20],
+      [3, 'CONFIRMED_REQ', 'Confirmed Requirement Identified', 'NEED', 20],
+      [4, 'BUDGET_AVAILABLE', 'Approved Budget Available (> 1 Lakh INR)', 'BUDGET', 15],
+      [5, 'URGENCY', 'High Urgency (Needs solution in < 30 days)', 'TIMELINE', 15],
+      [6, 'MEETING_INTEREST', 'Client Agreed to Schedule Discovery Meeting', 'ENGAGEMENT', 15],
+    ];
+    for (const r of scoringRules) {
+      insertScoringRule.run(r[0], r[1], r[2], r[3], r[4], 1);
+    }
+  } catch (seedErr) {
+    console.warn('Auto-seed core data notice:', seedErr);
+  }
+
+  console.log('Database initialized successfully with complete tables, accounts & indexes.');
 }
