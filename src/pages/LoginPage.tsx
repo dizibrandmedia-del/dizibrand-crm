@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ShieldCheck, UserCheck, Lock, Mail, ArrowRight, Sparkles, Building2 } from 'lucide-react';
+import { Lock, Mail, ArrowRight } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
   const { login } = useAuth();
@@ -29,25 +29,6 @@ export const LoginPage: React.FC = () => {
       }
     } catch (err: any) {
       toast.error(err.message || 'Invalid credentials');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleQuickLogin = async (demoEmail: string, demoPass: string) => {
-    setEmail(demoEmail);
-    setPassword(demoPass);
-    setIsLoading(true);
-    try {
-      const user = await login(demoEmail, demoPass);
-      toast.success(`Logged in as ${user.name} (${user.role})`);
-      if (user.role === 'SUPER_ADMIN') {
-        navigate('/admin/dashboard');
-      } else {
-        navigate('/consultant/dashboard');
-      }
-    } catch (err: any) {
-      toast.error(err.message || 'Login failed');
     } finally {
       setIsLoading(false);
     }
@@ -123,54 +104,6 @@ export const LoginPage: React.FC = () => {
               )}
             </button>
           </form>
-
-          {/* Quick Demo Logins Section */}
-          <div className="pt-4 border-t border-slate-800 space-y-3">
-            <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400 block text-center">
-              ⚡ Quick Demo Switcher (1-Click Login)
-            </span>
-
-            <div className="space-y-1.5">
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('admin@dizibrand.com', 'Admin@123456')}
-                className="w-full flex items-center justify-between p-2.5 rounded-xl bg-indigo-950/40 hover:bg-indigo-900/50 border border-indigo-800/40 text-left transition group"
-              >
-                <div className="flex items-center gap-2">
-                  <div className="p-1.5 bg-indigo-600 rounded-lg text-white">
-                    <ShieldCheck className="w-3.5 h-3.5" />
-                  </div>
-                  <div>
-                    <span className="text-xs font-bold text-white block group-hover:text-indigo-300">
-                      Super Admin (Full Access)
-                    </span>
-                    <span className="text-[10px] text-slate-400 font-mono">admin@dizibrand.com</span>
-                  </div>
-                </div>
-                <span className="text-[10px] font-bold text-indigo-400 group-hover:translate-x-0.5 transition">Login →</span>
-              </button>
-
-              <div className="grid grid-cols-2 gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => handleQuickLogin('rahul@dizibrand.com', 'Consultant@123456')}
-                  className="p-2.5 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-left transition"
-                >
-                  <span className="text-[11px] font-bold text-white block">Rahul Sharma</span>
-                  <span className="text-[9px] text-slate-500 font-mono">Consultant #1</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleQuickLogin('priya@dizibrand.com', 'Consultant@123456')}
-                  className="p-2.5 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-left transition"
-                >
-                  <span className="text-[11px] font-bold text-white block">Priya Verma</span>
-                  <span className="text-[9px] text-slate-500 font-mono">Consultant #2</span>
-                </button>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>
