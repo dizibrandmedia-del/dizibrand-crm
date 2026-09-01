@@ -674,22 +674,30 @@ const handleBulkAssign = (req: AuthRequest, res: any) => {
       VALUES (?, ?, 'ASSIGNED', 'Lead Assigned', ?)
     `);
 
+    const checkLeadStmt = db.prepare('SELECT id FROM leads WHERE id = ?');
+    let affected = 0;
+
     for (const id of lead_ids) {
+      const exists = checkLeadStmt.get(Number(id));
+      if (!exists) continue;
       updateStmt.run(consultantId, consultantId, consultantId, Number(id));
-      activityStmt.run(Number(id), req.user!.id, `Assigned to ${consultantName} by Super Admin.`);
+      try {
+        activityStmt.run(Number(id), req.user?.id || null, `Assigned to ${consultantName} by Super Admin.`);
+      } catch (e) {}
+      affected++;
     }
 
     // Send notification to consultant if assigned
-    if (consultantId) {
+    if (consultantId && affected > 0) {
       db.prepare(`
         INSERT INTO notifications (user_id, title, message, type, link_url)
         VALUES (?, 'New Leads Assigned', ?, 'NEW_LEAD', '/consultant/leads')
-      `).run(consultantId, `Super Admin assigned ${lead_ids.length} new leads to your queue.`);
+      `).run(consultantId, `Super Admin assigned ${affected} new leads to your queue.`);
     }
 
-    logAudit(req, 'BULK_ASSIGN_LEADS', 'leads', null, null, { count: lead_ids.length, consultant_id: consultantId });
+    logAudit(req, 'BULK_ASSIGN_LEADS', 'leads', null, null, { count: affected, consultant_id: consultantId });
 
-    return res.json({ message: `Successfully assigned ${lead_ids.length} leads to ${consultantName}` });
+    return res.json({ message: `Successfully assigned ${affected} leads to ${consultantName}` });
   } catch (error: any) {
     console.error('Bulk assign error:', error);
     return res.status(500).json({ error: 'Failed to perform bulk assignment' });
@@ -727,7 +735,9 @@ const handleBulkStatus = (req: AuthRequest, res: any) => {
       const res = updateStmt.run(status, Number(id));
       if (res.changes > 0) {
         affected++;
-        activityStmt.run(Number(id), user.id, `Status changed to ${status}`, `Bulk status updated to ${status} by ${user.name}`);
+        try {
+          activityStmt.run(Number(id), user.id, `Status changed to ${status}`, `Bulk status updated to ${status} by ${user.name}`);
+        } catch (e) {}
       }
     }
 
