@@ -6,13 +6,28 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Ensure persistent data directory exists
-const dataDir = path.resolve(__dirname, '../../data');
+// Ensure persistent or serverless data directory exists
+const isVercel = process.env.VERCEL === '1' || Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME);
+const dataDir = isVercel ? '/tmp/data' : path.resolve(__dirname, '../../data');
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
 const dbPath = path.join(dataDir, 'dizibrand_crm.sqlite');
+
+// If in serverless environment, copy bundled database to /tmp if not already present
+if (isVercel) {
+  try {
+    const bundledDbPath = path.resolve(process.cwd(), 'data/dizibrand_crm.sqlite');
+    if (fs.existsSync(bundledDbPath) && !fs.existsSync(dbPath)) {
+      fs.copyFileSync(bundledDbPath, dbPath);
+      console.log('✅ Bundled SQLite database copied to /tmp');
+    }
+  } catch (e) {
+    console.warn('Vercel SQLite copy note:', e);
+  }
+}
+
 export const db = new DatabaseSync(dbPath);
 
 export function initializeDatabase() {
