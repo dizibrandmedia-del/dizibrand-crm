@@ -45,19 +45,13 @@ async function uploadFile(localPath, remotePath) {
 }
 
 async function run() {
-  const files = [
-    { local: 'dist/index.html', remote: 'crm/index.html' },
-    { local: 'dist/assets/index-BocWq1HO.css', remote: 'crm/assets/index-BocWq1HO.css' },
-    { local: 'dist/assets/index-BEktDRhs.js', remote: 'crm/assets/index-BEktDRhs.js' },
-  ];
+  await uploadFile('dist/index.html', 'crm/index.html');
 
-  for (const f of files) {
-    if (fs.existsSync(f.local)) {
-      await uploadFile(f.local, f.remote);
-    }
+  const assetFiles = fs.readdirSync('dist/assets');
+  for (const file of assetFiles) {
+    await uploadFile(`dist/assets/${file}`, `crm/assets/${file}`);
   }
 
-  // Upload .htaccess for SPA routing
   const htaccess = `<IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteBase /
