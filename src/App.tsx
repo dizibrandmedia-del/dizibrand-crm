@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext.js';
 import { NotificationProvider } from './context/NotificationContext.js';
+import { ThemeProvider, useTheme } from './context/ThemeContext.js';
 import { Toaster } from 'sonner';
 
 // Layouts
@@ -91,66 +92,73 @@ const RootRedirect: React.FC = () => {
   return <Navigate to="/consultant/dashboard" replace />;
 };
 
+const ThemedToaster: React.FC = () => {
+  const { theme } = useTheme();
+  return <Toaster richColors position="top-right" theme={theme} />;
+};
+
 export const App: React.FC = () => {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <NotificationProvider>
-          <Toaster richColors position="top-right" theme="dark" />
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/" element={<RootRedirect />} />
+      <ThemeProvider>
+        <AuthProvider>
+          <NotificationProvider>
+            <ThemedToaster />
+            <Routes>
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/" element={<RootRedirect />} />
 
-            {/* Super Admin Protected Routes */}
-            <Route
-              path="/admin"
-              element={
-                <RequireAdmin>
-                  <AdminLayout />
-                </RequireAdmin>
-              }
-            >
-              <Route index element={<Navigate to="/admin/dashboard" replace />} />
-              <Route path="dashboard" element={<AdminDashboardPage />} />
-              <Route path="leads" element={<AdminLeadsPage />} />
-              <Route path="google-sheets" element={<GoogleSheetSyncPage />} />
-              <Route path="import" element={<MCAImportPage />} />
-              <Route path="potential-leads" element={<AdminPotentialLeadsPage />} />
-              <Route path="potential" element={<AdminPotentialLeadsPage />} />
-              <Route path="followups" element={<AdminFollowupsPage />} />
-              <Route path="tasks" element={<AdminTasksPage />} />
-              <Route path="sales" element={<AdminSalesPage />} />
-              <Route path="analytics" element={<AdminAnalyticsPage />} />
-              <Route path="team" element={<AdminTeamPage />} />
-              <Route path="businesses" element={<AdminBusinessesPage />} />
-              <Route path="sources" element={<AdminSourcesPage />} />
-              <Route path="audit-logs" element={<AdminAuditLogsPage />} />
-              <Route path="settings" element={<AdminSettingsPage />} />
-            </Route>
+              {/* Super Admin Protected Routes */}
+              <Route
+                path="/admin"
+                element={
+                  <RequireAdmin>
+                    <AdminLayout />
+                  </RequireAdmin>
+                }
+              >
+                <Route index element={<Navigate to="/admin/dashboard" replace />} />
+                <Route path="dashboard" element={<AdminDashboardPage />} />
+                <Route path="leads" element={<AdminLeadsPage />} />
+                <Route path="google-sheets" element={<GoogleSheetSyncPage />} />
+                <Route path="import" element={<MCAImportPage />} />
+                <Route path="potential-leads" element={<AdminPotentialLeadsPage />} />
+                <Route path="potential" element={<AdminPotentialLeadsPage />} />
+                <Route path="followups" element={<AdminFollowupsPage />} />
+                <Route path="tasks" element={<AdminTasksPage />} />
+                <Route path="sales" element={<AdminSalesPage />} />
+                <Route path="analytics" element={<AdminAnalyticsPage />} />
+                <Route path="team" element={<AdminTeamPage />} />
+                <Route path="businesses" element={<AdminBusinessesPage />} />
+                <Route path="sources" element={<AdminSourcesPage />} />
+                <Route path="audit-logs" element={<AdminAuditLogsPage />} />
+                <Route path="settings" element={<AdminSettingsPage />} />
+              </Route>
 
-            {/* Business Consultant Protected Routes */}
-            <Route
-              path="/consultant"
-              element={
-                <RequireConsultant>
-                  <ConsultantLayout />
-                </RequireConsultant>
-              }
-            >
-              <Route index element={<Navigate to="/consultant/dashboard" replace />} />
-              <Route path="dashboard" element={<ConsultantDashboardPage />} />
-              <Route path="leads" element={<ConsultantLeadsPage />} />
-              <Route path="followups" element={<ConsultantFollowupsPage />} />
-              <Route path="tasks" element={<ConsultantTasksPage />} />
-              <Route path="potential" element={<ConsultantPotentialPage />} />
-              <Route path="profile" element={<ConsultantProfilePage />} />
-            </Route>
+              {/* Business Consultant Protected Routes */}
+              <Route
+                path="/consultant"
+                element={
+                  <RequireConsultant>
+                    <ConsultantLayout />
+                  </RequireConsultant>
+                }
+              >
+                <Route index element={<Navigate to="/consultant/dashboard" replace />} />
+                <Route path="dashboard" element={<ConsultantDashboardPage />} />
+                <Route path="leads" element={<ConsultantLeadsPage />} />
+                <Route path="followups" element={<ConsultantFollowupsPage />} />
+                <Route path="tasks" element={<ConsultantTasksPage />} />
+                <Route path="potential" element={<ConsultantPotentialPage />} />
+                <Route path="profile" element={<ConsultantProfilePage />} />
+              </Route>
 
-            {/* 404 Fallback */}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </NotificationProvider>
-      </AuthProvider>
+              {/* 404 Fallback */}
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </NotificationProvider>
+        </AuthProvider>
+      </ThemeProvider>
     </BrowserRouter>
   );
 };
