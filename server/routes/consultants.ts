@@ -1,3 +1,4 @@
+import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { db } from '../db/database.js';
 import { pushToTurso } from '../db/tursoSync.js';
