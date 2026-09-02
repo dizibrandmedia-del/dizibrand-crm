@@ -851,12 +851,12 @@ app.get(['/api/tasks', '/tasks'], authenticateToken, async (req: any, res) => {
     if (user.role === 'CONSULTANT') {
       conditions.push('tasks.consultant_id = ?');
       params.push(user.id);
-    } else if (consultant_id) {
+    } else if (consultant_id && consultant_id !== 'undefined' && consultant_id !== '' && !isNaN(Number(consultant_id))) {
       conditions.push('tasks.consultant_id = ?');
       params.push(Number(consultant_id));
     }
 
-    if (status) {
+    if (status && status !== 'undefined' && status !== '') {
       conditions.push('tasks.status = ?');
       params.push(status);
     }
@@ -993,7 +993,7 @@ app.post(['/api/tasks', '/tasks'], authenticateToken, async (req: any, res) => {
   }
 });
 
-app.patch(['/api/tasks/:id', '/tasks/:id'], authenticateToken, async (req: any, res) => {
+app.patch(['/api/tasks/:id', '/tasks/:id', '/api/tasks/:id/status', '/tasks/:id/status'], authenticateToken, async (req: any, res) => {
   try {
     const user = req.user;
     const taskId = Number(req.params.id);

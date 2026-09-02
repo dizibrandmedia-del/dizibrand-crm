@@ -339,8 +339,15 @@ export const api = {
   // Tasks & Quotas
   tasks: {
     list: (params: { consultant_id?: number; status?: string } = {}) => {
-      const query = new URLSearchParams(params as any);
-      return request<{ tasks: Task[] }>(`/tasks?${query.toString()}`);
+      const query = new URLSearchParams();
+      if (params.consultant_id && !isNaN(Number(params.consultant_id))) {
+        query.append('consultant_id', String(params.consultant_id));
+      }
+      if (params.status && params.status !== 'undefined' && params.status !== '') {
+        query.append('status', params.status);
+      }
+      const qs = query.toString();
+      return request<{ tasks: Task[] }>(`/tasks${qs ? `?${qs}` : ''}`);
     },
     create: (data: Partial<Task>) =>
       request<{ message: string; task_id: number }>('/tasks', {

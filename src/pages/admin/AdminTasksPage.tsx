@@ -34,25 +34,33 @@ export const AdminTasksPage: React.FC = () => {
   const [meetingTarget, setMeetingTarget] = useState(2);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const fetchData = async () => {
+  const fetchConsultants = async () => {
+    try {
+      const cRes: any = await api.consultants.list();
+      const rawList = Array.isArray(cRes) ? cRes : (cRes?.consultants || cRes?.users || []);
+      const activeCons = rawList.filter((c: any) => c.role === 'CONSULTANT' || Number(c.is_active) === 1);
+      const finalList = activeCons.length > 0 ? activeCons : rawList;
+      setConsultants(finalList);
+      if (finalList.length > 0 && !consultantId) {
+        setConsultantId(String(finalList[0].id));
+      }
+      return finalList;
+    } catch (err) {
+      console.error('Failed to load consultants:', err);
+      return [];
+    }
+  };
+
+  const fetchTasks = async () => {
     setIsLoading(true);
     try {
-      const [tRes, cRes] = await Promise.all([
-        api.tasks.list({
-          consultant_id: selectedConsultantFilter ? Number(selectedConsultantFilter) : undefined,
-          status: statusFilter || undefined,
-        }),
-        api.consultants.list(),
-      ]);
-      setTasks(tRes.tasks || []);
-      const activeCons = (cRes.consultants || []).filter(
-        (c) => c.role === 'CONSULTANT' || Number(c.is_active) === 1
-      );
-      setConsultants(activeCons);
-      if (activeCons.length > 0 && !consultantId) {
-        setConsultantId(String(activeCons[0].id));
-      }
+      const tRes = await api.tasks.list({
+        consultant_id: selectedConsultantFilter ? Number(selectedConsultantFilter) : undefined,
+        status: statusFilter || undefined,
+      });
+      setTasks(tRes?.tasks || []);
     } catch (err: any) {
+      console.error('Failed to load tasks:', err);
       toast.error(err.message || 'Failed to load tasks');
     } finally {
       setIsLoading(false);
@@ -60,7 +68,11 @@ export const AdminTasksPage: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchData();
+    fetchConsultants();
+  }, []);
+
+  useEffect(() => {
+    fetchTasks();
   }, [selectedConsultantFilter, statusFilter]);
 
   const handleCreateTask = async (e: React.FormEvent) => {
@@ -91,7 +103,7 @@ export const AdminTasksPage: React.FC = () => {
       setIsCreateModalOpen(false);
       setTitle('');
       setDescription('');
-      fetchData();
+      fetchTasks();
     } catch (err: any) {
       toast.error(err.message || 'Failed to create task');
     } finally {
@@ -103,7 +115,7 @@ export const AdminTasksPage: React.FC = () => {
     try {
       await api.tasks.update(taskId, { status: status as any });
       toast.success(`Task status updated to ${status}`);
-      fetchData();
+      fetchTasks();
     } catch (err: any) {
       toast.error(err.message || 'Failed to update task');
     }
@@ -124,8 +136,13 @@ export const AdminTasksPage: React.FC = () => {
         </div>
 
         <button
-          onClick={() => {
-            if (consultants.length > 0 && !consultantId) {
+          onClick={async () => {
+            if (consultants.length === 0) {
+              const loaded = await fetchConsultants();
+              if (loaded.length > 0) {
+                setConsultantId(String(loaded[0].id));
+              }
+            } else if (!consultantId) {
               setConsultantId(String(consultants[0].id));
             }
             setIsCreateModalOpen(true);
@@ -299,7 +316,7 @@ export const AdminTasksPage: React.FC = () => {
               className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 font-semibold text-slate-800"
             >
               {consultants.length === 0 ? (
-                <option value="">No active consultants found</option>
+                <option value="">Loading consultants...</option>
               ) : (
                 consultants.map((c) => (
                   <option key={c.id} value={c.id}>
