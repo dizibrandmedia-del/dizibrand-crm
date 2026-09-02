@@ -64,16 +64,15 @@ export function requireAdmin(req: AuthRequest, res: Response, next: NextFunction
 
 /**
  * Sanitizes lead and sales records for Consultant role:
- * Strips internal_business_id, business_name, business_code, deal_value, revenue, payment_status
+ * Strips sensitive financial fields (deal_value, revenue, payment_status)
+ * but preserves assigned business_name & internal_business_id for communication & greetings.
  */
 export function sanitizeLeadForRole(lead: any, role: string) {
   if (!lead) return lead;
   if (role === 'SUPER_ADMIN') return lead;
 
   const sanitized = { ...lead };
-  delete sanitized.internal_business_id;
-  delete sanitized.business_name;
-  delete sanitized.business_code;
+  // Keep internal_business_id, business_name, business_code so consultants can address clients from the assigned business
   delete sanitized.deal_value;
   delete sanitized.revenue;
   delete sanitized.payment_status;

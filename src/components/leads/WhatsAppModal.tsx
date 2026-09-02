@@ -4,7 +4,7 @@ import { Modal } from '../common/Modal';
 import { api } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
-import { MessageCircle, Copy, Building2, UserCheck, AlertCircle } from 'lucide-react';
+import { MessageCircle, Copy, Building2, UserCheck, RefreshCw } from 'lucide-react';
 
 interface WhatsAppModalProps {
   isOpen: boolean;
@@ -26,34 +26,76 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
   const [remark, setRemark] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Resolved dynamic greeting names
-  const [resolvedBusinessName, setResolvedBusinessName] = useState<string>(lead?.business_name || '');
-  const [resolvedMemberName, setResolvedMemberName] = useState<string>(lead?.assigned_consultant_name || '');
+  // Business verticals list
+  const [businesses, setBusinesses] = useState<{ id: number; name: string; code?: string }[]>([]);
 
+  // Resolved dynamic greeting names
+  const [resolvedBusinessName, setResolvedBusinessName] = useState<string>('');
+  const [resolvedMemberName, setResolvedMemberName] = useState<string>('');
+
+  // Fetch available business categories once on mount
+  useEffect(() => {
+    api.businesses.list()
+      .then((res: any) => {
+        if (res?.businesses && Array.isArray(res.businesses)) {
+          setBusinesses(res.businesses);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to load businesses:', err);
+      });
+  }, []);
+
+  // When modal opens or lead changes, resolve greeting parameters
   useEffect(() => {
     if (!isOpen || !lead) return;
 
     setCustomMessage('');
-    const initialBiz = lead.business_name || '';
-    const initialMember = lead.assigned_consultant_name || '';
+
+    // 1. Initial resolution of business name
+    let initialBiz = (lead.business_name || (lead as any).internal_business_name || '').trim();
+    if (!initialBiz && lead.internal_business_id && businesses.length > 0) {
+      const match = businesses.find((b) => b.id === Number(lead.internal_business_id));
+      if (match) initialBiz = match.name;
+    }
+    if (!initialBiz && businesses.length > 0) {
+      // If unassigned, default to Fyntrust or first available
+      const fyn = businesses.find((b) => b.name.toLowerCase().includes('fyn'));
+      initialBiz = fyn ? fyn.name : businesses[0].name;
+    }
+
+    // 2. Initial resolution of consultant name
+    let initialMember = (lead.assigned_consultant_name || '').trim();
+    if (!initialMember && user?.name) {
+      initialMember = user.name.trim();
+    }
 
     setResolvedBusinessName(initialBiz);
-    setResolvedMemberName(initialMember);
+    setResolvedMemberName(initialMember || 'Consultant');
 
-    // If business name or assigned consultant is missing on the passed lead object, fetch full details from DB
-    if ((!initialBiz || !initialMember) && lead.id) {
+    // 3. Fetch latest full details from DB to guarantee 100% accuracy
+    if (lead.id) {
       api.leads.getById(lead.id)
         .then((res: any) => {
           if (res?.lead) {
-            if (res.lead.business_name) setResolvedBusinessName(res.lead.business_name);
-            if (res.lead.assigned_consultant_name) setResolvedMemberName(res.lead.assigned_consultant_name);
+            const fetchedBiz = (res.lead.business_name || res.lead.internal_business_name || '').trim();
+            const fetchedMember = (res.lead.assigned_consultant_name || '').trim();
+
+            if (fetchedBiz) {
+              setResolvedBusinessName(fetchedBiz);
+            } else if (res.lead.internal_business_id && businesses.length > 0) {
+              const match = businesses.find((b) => b.id === Number(res.lead.internal_business_id));
+              if (match) setResolvedBusinessName(match.name);
+            }
+
+            if (fetchedMember) {
+              setResolvedMemberName(fetchedMember);
+            }
           }
         })
-        .catch(() => {
-          // Graceful fallback
-        });
+        .catch(() => {});
     }
-  }, [isOpen, lead?.id, lead?.business_name, lead?.assigned_consultant_name]);
+  }, [isOpen, lead?.id, lead?.business_name, lead?.internal_business_id, lead?.assigned_consultant_name, businesses.length]);
 
   if (!lead) return null;
 
@@ -61,14 +103,11 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
   const digits = rawMobile.replace(/[^0-9]/g, '');
   const formattedPhone = digits.length === 10 ? `91${digits}` : digits;
 
-  // Exact greeting requirements:
+  // Exact dynamic greeting components:
   // "Hello [Lead Name], this is [Consultant Name] from [Assigned Business Name]."
   const leadName = lead.contact_person?.trim() || lead.company_name?.trim() || 'Sir/Madam';
-  const consultantName = resolvedMemberName?.trim() || lead.assigned_consultant_name?.trim() || user?.name?.trim() || 'Business Consultant';
-  
-  // Specifically the assigned business category mapped to this lead, NOT the panel's master CRM name
-  const hasAssignedBusiness = Boolean(resolvedBusinessName?.trim() || lead.business_name?.trim());
-  const assignedBusinessName = (resolvedBusinessName?.trim() || lead.business_name?.trim()) || 'our corporate advisory team';
+  const consultantName = resolvedMemberName?.trim() || user?.name?.trim() || 'Business Consultant';
+  const assignedBusinessName = resolvedBusinessName?.trim() || lead.business_name?.trim() || 'Fyntrust';
 
   const templates: Record<string, { title: string; text: string }> = {
     intro: {
@@ -77,7 +116,7 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
     },
     service_inquiry: {
       title: 'Business Service & Solutions',
-      text: `Hello ${leadName}, this is ${consultantName} from ${assignedBusinessName}.\n\nI am reaching out regarding business solutions and specialized services for ${lead.company_name}. We help companies streamline their operations, filings, and growth roadmap.\n\nCould we schedule a quick 5-minute call today to discuss how ${assignedBusinessName} can assist your operations?\n\nBest regards,\n${consultantName}\n${assignedBusinessName}`,
+      text: `Hello ${leadName}, this is ${consultantName} from ${assignedBusinessName}.\n\nI am reaching out regarding business solutions and specialized corporate services for ${lead.company_name}. We help companies streamline their operations, filings, and growth roadmap.\n\nCould we schedule a quick 5-minute call today to discuss how ${assignedBusinessName} can assist your operations?\n\nBest regards,\n${consultantName}\n${assignedBusinessName}`,
     },
     pitch_deck: {
       title: 'Share Company Portfolio Deck',
@@ -142,33 +181,59 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
             <p className="text-xs text-slate-600">
               {leadName} • <span className="font-mono font-bold text-slate-900">{lead.mobile}</span>
             </p>
-            {/* Greeting Identity Badges */}
-            <div className="flex flex-wrap items-center gap-2 mt-2">
-              {hasAssignedBusiness ? (
-                <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-700" title="Assigned Business Category mapped to this lead">
-                  <Building2 className="w-3 h-3 text-indigo-500" />
-                  <span>Business Category: <strong>{assignedBusinessName}</strong></span>
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md bg-amber-50 border border-amber-200 text-amber-700" title="No business category mapped to this lead">
-                  <AlertCircle className="w-3 h-3 text-amber-500" />
-                  <span>Business: <strong>Not Mapped (Generic)</strong></span>
-                </span>
-              )}
-              <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md bg-teal-50 border border-teal-200 text-teal-700" title="Assigned Consultant / Sender">
-                <UserCheck className="w-3 h-3 text-teal-500" />
-                <span>Consultant: <strong>{consultantName}</strong></span>
-              </span>
-            </div>
           </div>
           <button
             type="button"
             onClick={handleOpenWhatsApp}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 active:scale-95 text-white font-bold text-xs shadow-md shadow-teal-600/20 transition whitespace-nowrap"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 active:scale-95 text-white font-bold text-xs shadow-md shadow-teal-600/20 transition whitespace-nowrap cursor-pointer"
           >
             <MessageCircle className="w-4 h-4 fill-current" />
             OPEN WHATSAPP
           </button>
+        </div>
+
+        {/* Dynamic Business & Consultant Greeting Selector */}
+        <div className="p-3 rounded-xl bg-indigo-50/50 border border-indigo-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
+          <div className="w-full sm:w-1/2">
+            <label className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-indigo-900 mb-1">
+              <Building2 className="w-3 h-3 text-indigo-600" />
+              Greeting as Business:
+            </label>
+            <select
+              value={resolvedBusinessName}
+              onChange={(e) => {
+                setResolvedBusinessName(e.target.value);
+                setCustomMessage(''); // Regenerates template with new business name
+              }}
+              className="w-full text-xs font-bold text-indigo-950 bg-white border border-indigo-200 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-indigo-500 shadow-2xs"
+            >
+              {businesses.map((b) => (
+                <option key={b.id} value={b.name}>
+                  {b.name}
+                </option>
+              ))}
+              {!businesses.some((b) => b.name === resolvedBusinessName) && resolvedBusinessName && (
+                <option value={resolvedBusinessName}>{resolvedBusinessName}</option>
+              )}
+            </select>
+          </div>
+
+          <div className="w-full sm:w-1/2">
+            <label className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-teal-900 mb-1">
+              <UserCheck className="w-3 h-3 text-teal-600" />
+              Sender / Consultant Name:
+            </label>
+            <input
+              type="text"
+              value={resolvedMemberName}
+              onChange={(e) => {
+                setResolvedMemberName(e.target.value);
+                setCustomMessage(''); // Regenerates template with new consultant name
+              }}
+              placeholder="e.g. Jyoti"
+              className="w-full text-xs font-bold text-slate-900 bg-white border border-teal-200 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-teal-500 shadow-2xs"
+            />
+          </div>
         </div>
 
         {/* Template Selector */}
@@ -185,9 +250,9 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
                   setTemplate(key);
                   setCustomMessage('');
                 }}
-                className={`p-2 text-xs font-semibold rounded-xl border text-left transition ${
+                className={`p-2 text-xs font-semibold rounded-xl border text-left transition cursor-pointer ${
                   template === key && !customMessage
-                    ? 'border-indigo-600 bg-indigo-50/60 text-indigo-900 shadow-sm'
+                    ? 'border-indigo-600 bg-indigo-50/70 text-indigo-950 shadow-sm ring-1 ring-indigo-500'
                     : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
                 }`}
               >
@@ -200,8 +265,8 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
         {/* Message Content Preview */}
         <div>
           <div className="flex items-center justify-between mb-1">
-            <label className="text-xs font-bold uppercase tracking-wider text-slate-600">
-              Message Preview (Greets as {consultantName} from {assignedBusinessName})
+            <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
+              Live Preview (Greeting as <span className="text-indigo-700 font-extrabold">{consultantName}</span> from <span className="text-indigo-700 font-extrabold">{assignedBusinessName}</span>)
             </label>
             <button
               type="button"
@@ -216,7 +281,7 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
             value={messageToSend}
             onChange={(e) => setCustomMessage(e.target.value)}
             rows={5}
-            className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white text-slate-800 font-normal leading-relaxed"
+            className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white text-slate-800 font-normal leading-relaxed shadow-inner"
           />
         </div>
 
@@ -237,7 +302,7 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
                 key={opt.val}
                 type="button"
                 onClick={() => setOutcome(opt.val as WhatsAppOutcome)}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-xl border text-center transition ${
+                className={`px-3 py-1.5 text-xs font-semibold rounded-xl border text-center transition cursor-pointer ${
                   outcome === opt.val
                     ? 'bg-teal-50 border-teal-500 text-teal-800 ring-1 ring-teal-500'
                     : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
