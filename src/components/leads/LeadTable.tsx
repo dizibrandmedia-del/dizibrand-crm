@@ -31,16 +31,16 @@ export const LeadTable: React.FC<LeadTableProps> = ({
   const allSelected = leads.length > 0 && selectedIds.length === leads.length;
 
   return (
-    <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 shadow-sm transition-colors">
+    <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
       <table className="w-full text-left border-collapse">
         <thead>
-          <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-850 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+          <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
             <th className="p-3.5 w-10">
               <input
                 type="checkbox"
                 checked={allSelected}
                 onChange={onSelectAll}
-                className="w-4 h-4 text-indigo-600 rounded border-slate-300 dark:border-slate-600 dark:bg-slate-800 focus:ring-indigo-500"
+                className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
               />
             </th>
             <th className="py-3.5 px-3">Lead ID & Company</th>
@@ -53,7 +53,7 @@ export const LeadTable: React.FC<LeadTableProps> = ({
             <th className="py-3.5 px-3 text-right">Quick Actions</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 text-xs">
+        <tbody className="divide-y divide-slate-100 text-xs">
           {leads.map((lead) => {
             const isSelected = selectedIds.includes(lead.id);
             const todayStr = new Date().toISOString().split('T')[0];
@@ -62,35 +62,35 @@ export const LeadTable: React.FC<LeadTableProps> = ({
             return (
               <tr
                 key={lead.id}
-                className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/60 transition-colors ${
-                  isSelected ? 'bg-indigo-50/40 dark:bg-indigo-950/40' : ''
-                } ${isOverdue ? 'bg-rose-50/20 dark:bg-rose-950/20' : ''}`}
+                className={`hover:bg-slate-50/80 transition-colors ${
+                  isSelected ? 'bg-indigo-50/40' : ''
+                } ${isOverdue ? 'bg-rose-50/20' : ''}`}
               >
                 <td className="p-3.5">
                   <input
                     type="checkbox"
                     checked={isSelected}
                     onChange={() => onToggleSelect(lead.id)}
-                    className="w-4 h-4 text-indigo-600 rounded border-slate-300 dark:border-slate-600 dark:bg-slate-800 focus:ring-indigo-500"
+                    className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
                   />
                 </td>
 
                 {/* Company & ID */}
                 <td className="py-3.5 px-3">
-                  <span className="font-mono text-[10px] text-slate-400 dark:text-slate-500 block font-semibold">{lead.lead_id}</span>
+                  <span className="font-mono text-[10px] text-slate-400 block font-semibold">{lead.lead_id}</span>
                   <span
                     onClick={() => onViewDetails(lead)}
-                    className="font-bold text-slate-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400 cursor-pointer block text-xs truncate max-w-[200px]"
+                    className="font-bold text-slate-900 hover:text-indigo-600 cursor-pointer block text-xs truncate max-w-[200px]"
                   >
                     {lead.company_name}
                   </span>
-                  <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">
-                    <span className="font-medium text-slate-600 dark:text-slate-300">
+                  <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-slate-500">
+                    <span className="font-medium text-slate-600">
                       {lead.city && lead.state ? `${lead.city}, ${lead.state}` : (lead.city || lead.state || 'India')}
                     </span>
                     {lead.source_name && (
                       <>
-                        <span className="text-slate-300 dark:text-slate-600">•</span>
+                        <span className="text-slate-300">•</span>
                         <span>{lead.source_name}</span>
                       </>
                     )}
@@ -99,9 +99,9 @@ export const LeadTable: React.FC<LeadTableProps> = ({
 
                 {/* Contact */}
                 <td className="py-3.5 px-3">
-                  <span className="font-semibold text-slate-800 dark:text-slate-200 block truncate max-w-[140px]">{lead.contact_person}</span>
-                  <span className="text-[11px] text-slate-500 dark:text-slate-400 font-mono block">{lead.mobile}</span>
-                  {lead.email && <span className="text-[10px] text-slate-400 dark:text-slate-500 block truncate max-w-[140px]">{lead.email}</span>}
+                  <span className="font-semibold text-slate-800 block truncate max-w-[140px]">{lead.contact_person}</span>
+                  <span className="text-[11px] text-slate-500 font-mono block">{lead.mobile}</span>
+                  {lead.email && <span className="text-[10px] text-slate-400 block truncate max-w-[140px]">{lead.email}</span>}
                 </td>
 
                 {/* Status */}
@@ -120,7 +120,7 @@ export const LeadTable: React.FC<LeadTableProps> = ({
                 {/* Follow-up */}
                 <td className="py-3.5 px-3">
                   {lead.next_followup_date ? (
-                    <div className={isOverdue ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-slate-600 dark:text-slate-300'}>
+                    <div className={isOverdue ? 'text-rose-600 font-bold' : 'text-slate-600'}>
                       <span className="block">{lead.next_followup_date}</span>
                       <span className="text-[10px] opacity-75">{lead.next_followup_time || ''}</span>
                     </div>
@@ -133,9 +133,9 @@ export const LeadTable: React.FC<LeadTableProps> = ({
                 {isSuperAdmin && (
                   <td className="py-3.5 px-3">
                     {lead.assigned_consultant_name ? (
-                      <span className="font-medium text-slate-800 dark:text-slate-200">{lead.assigned_consultant_name}</span>
+                      <span className="font-medium text-slate-800">{lead.assigned_consultant_name}</span>
                     ) : (
-                      <span className="text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/40 px-2 py-0.5 rounded text-[10px] font-semibold">
+                      <span className="text-amber-600 bg-amber-50 px-2 py-0.5 rounded text-[10px] font-semibold">
                         Unassigned
                       </span>
                     )}
