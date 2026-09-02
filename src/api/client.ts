@@ -97,8 +97,8 @@ export const api = {
       status?: string;
       priority?: string;
       source_id?: number;
-      business_id?: number;
-      consultant_id?: number;
+      business_id?: number | string;
+      consultant_id?: number | string;
       city?: string;
       state?: string;
       date_from?: string;

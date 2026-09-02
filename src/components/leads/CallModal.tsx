@@ -28,7 +28,12 @@ export const CallModal: React.FC<CallModalProps> = ({
   if (!lead) return null;
 
   const handleDeviceCall = () => {
-    window.location.href = `tel:${lead.mobile}`;
+    const phoneToCall = lead.mobile && lead.mobile !== 'N/A' ? lead.mobile : lead.alternate_mobile;
+    if (!phoneToCall || phoneToCall === 'N/A') {
+      toast.error('No valid phone number available for this lead.');
+      return;
+    }
+    window.location.href = `tel:${phoneToCall}`;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

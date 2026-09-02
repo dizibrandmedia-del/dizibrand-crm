@@ -13,7 +13,7 @@ import { PotentialHandoverModal } from '../../components/leads/PotentialHandover
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 import { EmptyState } from '../../components/common/EmptyState';
 import { toast } from 'sonner';
-import { Users, Plus, Download, UploadCloud, CheckSquare, Sparkles, Filter } from 'lucide-react';
+import { Users, Plus, Download, UploadCloud, CheckSquare, Sparkles, Filter, Building2 } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 
 export const AdminLeadsPage: React.FC = () => {
@@ -23,27 +23,29 @@ export const AdminLeadsPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
 
   // Filters state
-  const [search, setSearch] = useState(searchParams.get('search') || '');
-  const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || '');
-  const [priorityFilter, setPriorityFilter] = useState(searchParams.get('priority') || '');
-  const [sourceFilter, setSourceFilter] = useState(searchParams.get('source_id') || '');
-  const [consultantFilter, setConsultantFilter] = useState(searchParams.get('assigned_consultant_id') || '');
-  const [businessFilter, setBusinessFilter] = useState(searchParams.get('internal_business_id') || '');
-  const [unassignedFilter, setUnassignedFilter] = useState(searchParams.get('unassigned') || '');
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [priorityFilter, setPriorityFilter] = useState('');
+  const [sourceFilter, setSourceFilter] = useState('');
+  const [consultantFilter, setConsultantFilter] = useState('');
+  const [businessFilter, setBusinessFilter] = useState('');
+  const [unassignedFilter, setUnassignedFilter] = useState('');
 
-  // Aux reference data
+  // Dropdown auxiliary data
   const [consultants, setConsultants] = useState<User[]>([]);
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [sources, setSources] = useState<LeadSource[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
 
-  // Selection & Modals
+  // Selection state
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+
+  // Modals state
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [selectedLeadId, setSelectedLeadId] = useState<number | null>(null);
   const [activeModalLead, setActiveModalLead] = useState<Lead | null>(null);
-  const [modalType, setModalType] = useState<'call' | 'whatsapp' | 'followup' | 'handover' | null>(null);
+  const [selectedLeadId, setSelectedLeadId] = useState<number | null>(null);
+  const [modalType, setModalType] = useState<'call' | 'whatsapp' | 'followup' | 'handover' | 'detail' | null>(null);
 
   const fetchAuxData = async () => {
     try {
@@ -72,8 +74,8 @@ export const AdminLeadsPage: React.FC = () => {
         status: statusFilter || undefined,
         priority: priorityFilter || undefined,
         source_id: sourceFilter ? Number(sourceFilter) : undefined,
-        consultant_id: consultantFilter ? Number(consultantFilter) : undefined,
-        business_id: businessFilter ? Number(businessFilter) : undefined,
+        consultant_id: consultantFilter === 'unassigned' ? 'unassigned' : (consultantFilter ? Number(consultantFilter) : undefined),
+        business_id: businessFilter === 'unassigned' ? 'unassigned' : (businessFilter ? Number(businessFilter) : undefined),
       });
 
       setLeads(res.leads);
@@ -182,6 +184,56 @@ export const AdminLeadsPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Quick Allocation Filter Tabs */}
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => { setBusinessFilter(''); setConsultantFilter(''); }}
+          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border ${
+            !businessFilter && !consultantFilter
+              ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          All Inbound Pool ({pagination.total || '775'})
+        </button>
+        <button
+          type="button"
+          onClick={() => { setBusinessFilter('1'); setConsultantFilter(''); }}
+          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border ${
+            businessFilter === '1'
+              ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          <Building2 className="w-3.5 h-3.5 text-indigo-500" />
+          Dizibrand Media
+        </button>
+        <button
+          type="button"
+          onClick={() => { setBusinessFilter('unassigned'); setConsultantFilter(''); }}
+          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border ${
+            businessFilter === 'unassigned'
+              ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          <Filter className="w-3.5 h-3.5 text-amber-500" />
+          Unmapped in Pool
+        </button>
+        <button
+          type="button"
+          onClick={() => { setConsultantFilter('unassigned'); setBusinessFilter(''); }}
+          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border ${
+            consultantFilter === 'unassigned'
+              ? 'bg-slate-800 text-white border-slate-800 shadow-xs'
+              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          Pending Consultant Allocation
+        </button>
+      </div>
+
       {/* Search & Filter Bar */}
       <SearchFilterBar
         search={search}
@@ -202,6 +254,7 @@ export const AdminLeadsPage: React.FC = () => {
           className="px-3 py-2 text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700"
         >
           <option value="">All Consultants</option>
+          <option value="unassigned">Unassigned (Pending Consultant)</option>
           {consultants.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
@@ -214,10 +267,11 @@ export const AdminLeadsPage: React.FC = () => {
           onChange={(e) => setBusinessFilter(e.target.value)}
           className="px-3 py-2 text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700"
         >
-          <option value="">All Businesses</option>
+          <option value="">All Businesses / Verticals</option>
+          <option value="unassigned">Unmapped in Pool</option>
           {businesses.map((b) => (
             <option key={b.id} value={b.id}>
-              {b.name}
+              {b.name} ({b.code})
             </option>
           ))}
         </select>

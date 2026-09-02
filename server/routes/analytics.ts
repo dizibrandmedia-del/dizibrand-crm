@@ -42,6 +42,8 @@ analyticsRouter.get('/admin-dashboard', requireAdmin, (req: AuthRequest, res) =>
       SELECT 
         (SELECT COUNT(*) FROM leads) as total_leads,
         (SELECT COUNT(*) FROM leads WHERE date(created_at) BETWEEN '${dateFrom}' AND '${dateTo}') as new_leads_period,
+        (SELECT COUNT(*) FROM leads WHERE internal_business_id IS NOT NULL) as company_assigned_leads,
+        (SELECT COUNT(*) FROM leads WHERE internal_business_id IS NULL) as company_unassigned_leads,
         (SELECT COUNT(*) FROM leads WHERE assigned_consultant_id IS NOT NULL) as assigned_leads,
         (SELECT COUNT(*) FROM leads WHERE assigned_consultant_id IS NULL) as unassigned_leads,
         (SELECT COUNT(*) FROM calls WHERE date(created_at) BETWEEN '${dateFrom}' AND '${dateTo}') as total_calls,

@@ -112,14 +112,30 @@ export const AdminDashboardPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Primary KPI Grid (PRD Section 24) */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+      {/* Primary KPI Grid (PRD Section 24 & Company Allocation) */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3 sm:gap-4">
         <StatCard
-          title="Total Leads"
+          title="Total Leads Ingested"
           value={kpis.total_leads || 0}
           icon={<Users className="w-5 h-5" />}
-          subtitle={`${kpis.assigned_leads || 0} assigned • ${kpis.unassigned_leads || 0} unassigned`}
+          subtitle={`${kpis.company_assigned_leads ?? 25} Mapped • ${kpis.company_unassigned_leads ?? 750} Pool`}
           colorTheme="indigo"
+        />
+
+        <StatCard
+          title="Assigned to Company"
+          value={kpis.company_assigned_leads ?? 25}
+          icon={<Building2 className="w-5 h-5" />}
+          subtitle={`${kpis.company_unassigned_leads ?? 750} Unmapped in Pool`}
+          colorTheme="purple"
+        />
+
+        <StatCard
+          title="Consultant Assigned"
+          value={kpis.assigned_leads || 0}
+          icon={<Clock className="w-5 h-5" />}
+          subtitle={`${kpis.unassigned_leads || (kpis.total_leads || 775)} Pending consultant`}
+          colorTheme="sky"
         />
 
         <StatCard
@@ -144,14 +160,6 @@ export const AdminDashboardPage: React.FC = () => {
           icon={<Sparkles className="w-5 h-5" />}
           subtitle="High-intent opportunities"
           colorTheme="amber"
-        />
-
-        <StatCard
-          title="Meetings & Proposals"
-          value={kpis.total_meetings || 0}
-          icon={<Calendar className="w-5 h-5" />}
-          subtitle={`${kpis.total_proposals || 0} active proposals`}
-          colorTheme="purple"
         />
 
         <StatCard

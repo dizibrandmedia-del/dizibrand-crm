@@ -1,7 +1,7 @@
 import React from 'react';
 import { Lead } from '../../types';
 import { StatusBadge, PriorityBadge, ScoreBadge } from '../common/Badge';
-import { Phone, MessageCircle, Calendar, Sparkles, Eye, MoreHorizontal } from 'lucide-react';
+import { Phone, MessageCircle, Calendar, Sparkles, Eye, MoreHorizontal, Building2 } from 'lucide-react';
 
 interface LeadTableProps {
   leads: Lead[];
@@ -143,58 +143,91 @@ export const LeadTable: React.FC<LeadTableProps> = ({
                 {/* Internal Business (Super Admin Only) */}
                 {isSuperAdmin && (
                   <td className="py-3.5 px-3">
-                    {lead.business_name ? (
-                      <span className="px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 font-medium text-[11px]">
-                        {lead.business_name}
-                      </span>
-                    ) : (
-                      <span className="text-slate-400 text-[11px]">—</span>
-                    )}
+                    {(() => {
+                      const bizName = lead.business_name || (lead as any).internal_business_name;
+                      if (!bizName) {
+                        return (
+                          <span className="text-slate-400 text-[10px] font-medium italic bg-slate-100/90 px-2 py-0.5 rounded-full border border-slate-200 inline-block">
+                            Unassigned
+                          </span>
+                        );
+                      }
+                      const lower = bizName.toLowerCase();
+                      const style = lower.includes('dizi')
+                        ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                        : lower.includes('strat') || lower.includes('hr')
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : lower.includes('fyn')
+                        ? 'bg-purple-50 text-purple-700 border-purple-200'
+                        : 'bg-amber-50 text-amber-700 border-amber-200';
+
+                      return (
+                        <span className={`px-2.5 py-0.5 rounded-full font-semibold text-[11px] inline-flex items-center gap-1 border shadow-2xs ${style}`}>
+                          <Building2 className="w-3 h-3 shrink-0" />
+                          {bizName}
+                        </span>
+                      );
+                    })()}
                   </td>
                 )}
 
                 {/* Actions */}
-                <td className="py-3.5 px-3 text-right">
+                <td className="py-3.5 px-3 text-right" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center justify-end gap-1.5">
                     <button
                       type="button"
-                      onClick={() => onCall(lead)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onCall(lead);
+                      }}
                       title="Direct Call"
-                      className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white transition"
+                      className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white transition shadow-2xs cursor-pointer"
                     >
                       <Phone className="w-3.5 h-3.5" />
                     </button>
                     <button
                       type="button"
-                      onClick={() => onWhatsApp(lead)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onWhatsApp(lead);
+                      }}
                       title="Direct WhatsApp"
-                      className="p-1.5 rounded-lg bg-teal-50 text-teal-600 hover:bg-teal-600 hover:text-white transition"
+                      className="p-1.5 rounded-lg bg-teal-50 text-teal-600 hover:bg-teal-600 hover:text-white transition shadow-2xs cursor-pointer"
                     >
                       <MessageCircle className="w-3.5 h-3.5" />
                     </button>
                     <button
                       type="button"
-                      onClick={() => onFollowup(lead)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onFollowup(lead);
+                      }}
                       title="Schedule Follow-up"
-                      className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white transition"
+                      className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white transition shadow-2xs cursor-pointer"
                     >
                       <Calendar className="w-3.5 h-3.5" />
                     </button>
                     {lead.status !== 'OWNER_HANDOVER' && lead.status !== 'WON' && (
                       <button
                         type="button"
-                        onClick={() => onPotentialHandover(lead)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onPotentialHandover(lead);
+                        }}
                         title="Send as Potential Lead"
-                        className="p-1.5 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-600 hover:text-white transition"
+                        className="p-1.5 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-600 hover:text-white transition shadow-2xs cursor-pointer"
                       >
                         <Sparkles className="w-3.5 h-3.5" />
                       </button>
                     )}
                     <button
                       type="button"
-                      onClick={() => onViewDetails(lead)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onViewDetails(lead);
+                      }}
                       title="View Lead Details"
-                      className="p-1.5 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-800 hover:text-white transition"
+                      className="p-1.5 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-800 hover:text-white transition shadow-2xs cursor-pointer"
                     >
                       <Eye className="w-3.5 h-3.5" />
                     </button>

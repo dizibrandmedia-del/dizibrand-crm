@@ -351,6 +351,8 @@ app.get(['/api/leads', '/leads'], authenticateToken, async (req: any, res) => {
     if (req.user.role === 'CONSULTANT') {
       whereClause += ' AND assigned_consultant_id = ?';
       args.push(req.user.id);
+    } else if (consultant_id === 'unassigned') {
+      whereClause += ' AND assigned_consultant_id IS NULL';
     } else if (consultant_id) {
       whereClause += ' AND assigned_consultant_id = ?';
       args.push(consultant_id);
@@ -361,7 +363,9 @@ app.get(['/api/leads', '/leads'], authenticateToken, async (req: any, res) => {
       args.push(status);
     }
 
-    if (business_id) {
+    if (business_id === 'unassigned' || business_id === 'unmapped') {
+      whereClause += ' AND internal_business_id IS NULL';
+    } else if (business_id) {
       whereClause += ' AND internal_business_id = ?';
       args.push(business_id);
     }
@@ -383,7 +387,9 @@ app.get(['/api/leads', '/leads'], authenticateToken, async (req: any, res) => {
       sql: `
         SELECT leads.*, 
                users.name as assigned_consultant_name,
+               businesses.name as business_name,
                businesses.name as internal_business_name,
+               businesses.code as business_code,
                lead_sources.name as source_name
         FROM leads
         LEFT JOIN users ON users.id = leads.assigned_consultant_id
@@ -407,6 +413,428 @@ app.get(['/api/leads', '/leads'], authenticateToken, async (req: any, res) => {
     });
   } catch (err: any) {
     console.error('Leads error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Single Lead Detail (Quick Action: View Details)
+app.get(['/api/leads/:id', '/leads/:id'], authenticateToken, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const leadRes = await turso.execute({
+      sql: `
+        SELECT leads.*,
+               users.name as assigned_consultant_name,
+               users.email as assigned_consultant_email,
+               users.mobile as assigned_consultant_mobile,
+               businesses.name as business_name,
+               businesses.name as internal_business_name,
+               businesses.code as business_code,
+               lead_sources.name as source_name
+        FROM leads
+        LEFT JOIN users ON users.id = leads.assigned_consultant_id
+        LEFT JOIN businesses ON businesses.id = leads.internal_business_id
+        LEFT JOIN lead_sources ON lead_sources.id = leads.source_id
+        WHERE leads.id = ?
+      `,
+      args: [id],
+    });
+
+    const lead = leadRes.rows[0];
+    if (!lead) return res.status(404).json({ error: 'Lead not found' });
+
+    const [activitiesRes, callsRes, waRes, followupsRes] = await Promise.all([
+      turso.execute({
+        sql: `
+          SELECT lead_activities.*, users.name as user_name, users.role as user_role
+          FROM lead_activities
+          LEFT JOIN users ON users.id = lead_activities.user_id
+          WHERE lead_activities.lead_id = ?
+          ORDER BY lead_activities.created_at DESC
+        `,
+        args: [id],
+      }),
+      turso.execute({
+        sql: `
+          SELECT calls.*, users.name as consultant_name
+          FROM calls
+          LEFT JOIN users ON users.id = calls.consultant_id
+          WHERE calls.lead_id = ?
+          ORDER BY calls.created_at DESC
+        `,
+        args: [id],
+      }),
+      turso.execute({
+        sql: `
+          SELECT whatsapp_activities.*, users.name as consultant_name
+          FROM whatsapp_activities
+          LEFT JOIN users ON users.id = whatsapp_activities.consultant_id
+          WHERE whatsapp_activities.lead_id = ?
+          ORDER BY whatsapp_activities.created_at DESC
+        `,
+        args: [id],
+      }),
+      turso.execute({
+        sql: `
+          SELECT follow_ups.*, users.name as consultant_name
+          FROM follow_ups
+          LEFT JOIN users ON users.id = follow_ups.consultant_id
+          WHERE follow_ups.lead_id = ?
+          ORDER BY follow_ups.followup_date DESC
+        `,
+        args: [id],
+      }),
+    ]);
+
+    res.json({
+      lead,
+      activities: activitiesRes.rows,
+      calls: callsRes.rows,
+      whatsapp: waRes.rows,
+      followups: followupsRes.rows,
+      meetings: [],
+      proposals: [],
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Quick Action: Log Call
+app.post(['/api/activities/call', '/activities/call'], authenticateToken, async (req: any, res) => {
+  try {
+    const user = req.user;
+    const { lead_id, outcome, duration_seconds = 0, remark, next_followup_date, next_followup_time } = req.body;
+    if (!lead_id || !outcome) {
+      return res.status(400).json({ error: 'lead_id and outcome are required' });
+    }
+
+    const leadId = Number(lead_id);
+    const now = new Date();
+    const callDate = now.toISOString().split('T')[0];
+    const callTime = now.toTimeString().split(' ')[0].substring(0, 5);
+
+    const callRes = await turso.execute({
+      sql: `
+        INSERT INTO calls (lead_id, consultant_id, call_date, call_time, outcome, duration_seconds, remark, next_followup_date, next_followup_time)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        RETURNING id
+      `,
+      args: [leadId, user.id, callDate, callTime, outcome, Number(duration_seconds) || 0, remark || null, next_followup_date || null, next_followup_time || null],
+    });
+
+    let newStatus = 'CONNECTED';
+    if (outcome === 'INTERESTED') newStatus = 'INTERESTED';
+    else if (outcome === 'QUALIFIED') newStatus = 'QUALIFIED';
+    else if (outcome === 'NOT_INTERESTED') newStatus = 'NOT_INTERESTED';
+    else if (outcome === 'WRONG_NUMBER') newStatus = 'WRONG_NUMBER';
+    else if (outcome === 'DND') newStatus = 'DND';
+    else if (outcome === 'CALL_BACK') newStatus = 'FOLLOW_UP';
+    else if (['NO_ANSWER', 'BUSY', 'SWITCHED_OFF'].includes(outcome)) newStatus = 'CONTACT_ATTEMPTED';
+
+    await turso.execute({
+      sql: `
+        UPDATE leads SET
+          status = ?,
+          last_activity_at = CURRENT_TIMESTAMP,
+          next_followup_date = COALESCE(?, next_followup_date),
+          next_followup_time = COALESCE(?, next_followup_time),
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `,
+      args: [newStatus, next_followup_date || null, next_followup_time || null, leadId],
+    });
+
+    if (next_followup_date) {
+      await turso.execute({
+        sql: `
+          INSERT INTO follow_ups (lead_id, consultant_id, followup_date, followup_time, priority, reason, remark, status)
+          VALUES (?, ?, ?, ?, 'MEDIUM', ?, ?, 'PENDING')
+        `,
+        args: [leadId, user.id, next_followup_date, next_followup_time || '10:00', `Call follow-up (${outcome})`, remark || 'Call follow-up scheduled'],
+      });
+    }
+
+    const formattedDuration = duration_seconds > 0 ? ` (${Math.floor(duration_seconds / 60)}m ${duration_seconds % 60}s)` : '';
+    await turso.execute({
+      sql: `
+        INSERT INTO lead_activities (lead_id, user_id, activity_type, title, description)
+        VALUES (?, ?, 'CALL', ?, ?)
+      `,
+      args: [leadId, user.id, `Call: ${outcome}${formattedDuration}`, remark || `Call logged by ${user.name} with outcome "${outcome}"`],
+    });
+
+    res.status(201).json({
+      message: 'Call activity logged successfully',
+      call_id: callRes.rows[0]?.id,
+      lead_status: newStatus,
+    });
+  } catch (err: any) {
+    console.error('Call logging error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Quick Action: Log WhatsApp
+app.post(['/api/activities/whatsapp', '/activities/whatsapp'], authenticateToken, async (req: any, res) => {
+  try {
+    const user = req.user;
+    const { lead_id, outcome = 'SENT', template_name, message_preview, remark } = req.body;
+    if (!lead_id) return res.status(400).json({ error: 'lead_id is required' });
+
+    const leadId = Number(lead_id);
+    const waRes = await turso.execute({
+      sql: `
+        INSERT INTO whatsapp_activities (lead_id, consultant_id, outcome, template_name, message_preview, remark)
+        VALUES (?, ?, ?, ?, ?, ?)
+        RETURNING id
+      `,
+      args: [leadId, user.id, outcome, template_name || 'Standard Outreach', message_preview || null, remark || null],
+    });
+
+    await turso.execute({
+      sql: 'UPDATE leads SET last_activity_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      args: [leadId],
+    });
+
+    await turso.execute({
+      sql: `
+        INSERT INTO lead_activities (lead_id, user_id, activity_type, title, description)
+        VALUES (?, ?, 'WHATSAPP', ?, ?)
+      `,
+      args: [leadId, user.id, `WhatsApp: ${outcome}`, remark || `WhatsApp message (${template_name || 'Outreach'}) sent by ${user.name}`],
+    });
+
+    res.status(201).json({
+      message: 'WhatsApp activity logged successfully',
+      whatsapp_id: waRes.rows[0]?.id,
+    });
+  } catch (err: any) {
+    console.error('WhatsApp logging error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Add Remark to Timeline
+app.post(['/api/activities/remark', '/activities/remark'], authenticateToken, async (req: any, res) => {
+  try {
+    const { lead_id, remark } = req.body;
+    if (!lead_id || !remark) return res.status(400).json({ error: 'lead_id and remark required' });
+    await turso.execute({
+      sql: `
+        INSERT INTO lead_activities (lead_id, user_id, activity_type, title, description)
+        VALUES (?, ?, 'NOTE', 'Note Added', ?)
+      `,
+      args: [Number(lead_id), req.user.id, remark.trim()],
+    });
+    res.json({ message: 'Remark saved' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get Timeline Activities
+app.get(['/api/activities/lead/:id', '/activities/lead/:id'], authenticateToken, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const resActivities = await turso.execute({
+      sql: `
+        SELECT lead_activities.*, users.name as user_name, users.role as user_role
+        FROM lead_activities
+        LEFT JOIN users ON users.id = lead_activities.user_id
+        WHERE lead_activities.lead_id = ?
+        ORDER BY lead_activities.created_at DESC
+      `,
+      args: [id],
+    });
+    res.json({ activities: resActivities.rows });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Follow-ups List
+app.get(['/api/followups', '/followups'], authenticateToken, async (req: any, res) => {
+  try {
+    const { view = 'all', status = 'PENDING', priority } = req.query;
+    const todayStr = new Date().toISOString().split('T')[0];
+    let whereClause = 'WHERE 1=1';
+    const args: any[] = [];
+
+    if (req.user.role === 'CONSULTANT') {
+      whereClause += ' AND follow_ups.consultant_id = ?';
+      args.push(req.user.id);
+    }
+    if (status) {
+      whereClause += ' AND follow_ups.status = ?';
+      args.push(status);
+    }
+    if (priority) {
+      whereClause += ' AND follow_ups.priority = ?';
+      args.push(priority);
+    }
+    if (view === 'today') {
+      whereClause += ' AND follow_ups.followup_date = ?';
+      args.push(todayStr);
+    } else if (view === 'overdue') {
+      whereClause += ' AND follow_ups.followup_date < ?';
+      args.push(todayStr);
+    } else if (view === 'upcoming') {
+      whereClause += ' AND follow_ups.followup_date > ?';
+      args.push(todayStr);
+    }
+
+    const followupsRes = await turso.execute({
+      sql: `
+        SELECT follow_ups.*,
+               leads.lead_id, leads.company_name, leads.contact_person,
+               leads.mobile, leads.email, leads.city, leads.status as lead_status,
+               leads.lead_score, leads.priority as lead_priority,
+               users.name as consultant_name
+        FROM follow_ups
+        JOIN leads ON leads.id = follow_ups.lead_id
+        JOIN users ON users.id = follow_ups.consultant_id
+        ${whereClause}
+        ORDER BY follow_ups.followup_date ASC, follow_ups.followup_time ASC
+      `,
+      args,
+    });
+
+    const countsRes = await turso.execute(`
+      SELECT 
+        COUNT(CASE WHEN followup_date = '${todayStr}' AND status = 'PENDING' THEN 1 END) as today_count,
+        COUNT(CASE WHEN followup_date < '${todayStr}' AND status = 'PENDING' THEN 1 END) as overdue_count,
+        COUNT(CASE WHEN followup_date > '${todayStr}' AND status = 'PENDING' THEN 1 END) as upcoming_count,
+        COUNT(CASE WHEN priority = 'HOT' AND status = 'PENDING' THEN 1 END) as hot_count,
+        COUNT(CASE WHEN status = 'PENDING' THEN 1 END) as total_pending
+      FROM follow_ups
+    `);
+
+    res.json({
+      followups: followupsRes.rows,
+      counts: countsRes.rows[0] || { today_count: 0, overdue_count: 0, upcoming_count: 0, hot_count: 0, total_pending: 0 },
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Quick Action: Schedule Follow-up
+app.post(['/api/followups', '/followups'], authenticateToken, async (req: any, res) => {
+  try {
+    const user = req.user;
+    const { lead_id, followup_date, followup_time = '10:00', priority = 'MEDIUM', reason = 'Follow-up Call', remark } = req.body;
+    if (!lead_id || !followup_date) {
+      return res.status(400).json({ error: 'lead_id and followup_date required' });
+    }
+    const leadId = Number(lead_id);
+    const consultantId = user.id;
+
+    const fRes = await turso.execute({
+      sql: `
+        INSERT INTO follow_ups (lead_id, consultant_id, followup_date, followup_time, priority, reason, remark, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING')
+        RETURNING id
+      `,
+      args: [leadId, consultantId, followup_date, followup_time, priority, reason, remark || null],
+    });
+
+    await turso.execute({
+      sql: `
+        UPDATE leads SET
+          next_followup_date = ?,
+          next_followup_time = ?,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `,
+      args: [followup_date, followup_time, leadId],
+    });
+
+    await turso.execute({
+      sql: `
+        INSERT INTO lead_activities (lead_id, user_id, activity_type, title, description)
+        VALUES (?, ?, 'FOLLOW_UP', 'Follow-up Scheduled', ?)
+      `,
+      args: [leadId, user.id, `Follow-up set for ${followup_date} at ${followup_time}. ${remark || ''}`],
+    });
+
+    res.status(201).json({
+      message: 'Follow-up scheduled successfully',
+      followup_id: fRes.rows[0]?.id,
+    });
+  } catch (err: any) {
+    console.error('Follow-up scheduling error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Quick Action: Potential Lead Handover
+app.post(['/api/potential-leads/handover', '/potential-leads/handover'], authenticateToken, async (req: any, res) => {
+  try {
+    const user = req.user;
+    const {
+      lead_id, company_name, contact_person, mobile, requirement,
+      requirement_details, interest_level, budget, urgency,
+      decision_maker, current_vendor, call_remark, whatsapp_summary,
+      recommended_next_action
+    } = req.body;
+
+    if (!lead_id || !company_name || !contact_person || !mobile) {
+      return res.status(400).json({ error: 'lead_id, company_name, contact_person, and mobile are required' });
+    }
+    const leadId = Number(lead_id);
+
+    const hRes = await turso.execute({
+      sql: `
+        INSERT INTO potential_handovers (
+          lead_id, consultant_id, company_name, contact_person, mobile,
+          requirement, requirement_details, interest_level, budget, urgency,
+          decision_maker, current_vendor, call_remark, whatsapp_summary,
+          recommended_next_action, admin_status, created_at
+        ) VALUES (
+          ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?,
+          ?, ?, ?, ?,
+          ?, 'PENDING_REVIEW', CURRENT_TIMESTAMP
+        )
+        RETURNING id
+      `,
+      args: [
+        leadId, user.id, company_name, contact_person, mobile,
+        requirement || 'General Requirement', requirement_details || '', interest_level || 'HIGH',
+        budget || 'Not specified', urgency || 'IMMEDIATE', decision_maker || 'YES',
+        current_vendor || 'None', call_remark || null, whatsapp_summary || null,
+        recommended_next_action || 'Owner discussion'
+      ],
+    });
+
+    await turso.execute({
+      sql: `
+        UPDATE leads SET
+          status = 'OWNER_HANDOVER',
+          priority = 'HOT',
+          lead_score = 95,
+          lead_score_band = 'HOT',
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `,
+      args: [leadId],
+    });
+
+    await turso.execute({
+      sql: `
+        INSERT INTO lead_activities (lead_id, user_id, activity_type, title, description)
+        VALUES (?, ?, 'STATUS_CHANGE', 'Promoted to Potential Lead Handover', ?)
+      `,
+      args: [leadId, user.id, `Lead promoted to OWNER_HANDOVER by ${user.name}. Requirement: ${requirement || 'Consulting'}`],
+    });
+
+    res.status(201).json({
+      message: 'Potential lead handed over successfully for leadership review',
+      handover_id: hRes.rows[0]?.id,
+    });
+  } catch (err: any) {
+    console.error('Handover error:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -623,6 +1051,8 @@ app.get([
         SELECT 
           (SELECT COUNT(*) FROM leads) as total_leads,
           (SELECT COUNT(*) FROM leads WHERE date(created_at) BETWEEN '${dateFrom}' AND '${dateTo}') as new_leads_period,
+          (SELECT COUNT(*) FROM leads WHERE internal_business_id IS NOT NULL) as company_assigned_leads,
+          (SELECT COUNT(*) FROM leads WHERE internal_business_id IS NULL) as company_unassigned_leads,
           (SELECT COUNT(*) FROM leads WHERE assigned_consultant_id IS NOT NULL) as assigned_leads,
           (SELECT COUNT(*) FROM leads WHERE assigned_consultant_id IS NULL) as unassigned_leads,
           (SELECT COUNT(*) FROM calls WHERE date(created_at) BETWEEN '${dateFrom}' AND '${dateTo}') as total_calls,
@@ -1033,9 +1463,16 @@ app.post([
     const config: any = configRes.rows[0];
     if (!config) return res.status(404).json({ error: 'Config not found' });
 
-    // Download CSV from Google Sheets export URL
-    const csvUrl = `https://docs.google.com/spreadsheets/d/${config.sheet_id}/export?format=csv&gid=${config.gid || '0'}`;
-    const csvFetch = await fetch(csvUrl);
+    // Download CSV from Google Sheets export URL with cache-busting
+    const cacheBust = Date.now();
+    const csvUrl = `https://docs.google.com/spreadsheets/d/${config.sheet_id}/export?format=csv&gid=${config.gid || '0'}&_cb=${cacheBust}`;
+    const csvFetch = await fetch(csvUrl, {
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36',
+      },
+    });
     if (!csvFetch.ok) {
       return res.status(400).json({ error: 'Failed to access Google Sheet CSV export. Please make sure sheet has link sharing enabled.' });
     }
@@ -1045,15 +1482,21 @@ app.post([
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const rawData = xlsx.utils.sheet_to_json(sheet, { defval: '' });
 
-    // Deduplication against Turso Cloud leads table
-    const existingRes = await turso.execute('SELECT cin, company_name FROM leads');
-    const existingCompanyNames = new Set(existingRes.rows.map((r: any) => String(r.company_name || '').trim().toLowerCase()));
-    const existingCINs = new Set(existingRes.rows.map((r: any) => String(r.cin || '').trim().toUpperCase()).filter(Boolean));
+    // Deduplication and enrichment against Turso Cloud leads table
+    const existingRes = await turso.execute('SELECT id, cin, company_name, mobile, alternate_mobile, email FROM leads');
+    const existingByName = new Map<string, any>();
+    const existingByCIN = new Map<string, any>();
+    for (const r of existingRes.rows as any[]) {
+      if (r.company_name) existingByName.set(String(r.company_name).trim().toLowerCase(), r);
+      if (r.cin) existingByCIN.set(String(r.cin).trim().toUpperCase(), r);
+    }
 
     const validRecords: any[] = [];
+    const updateStatements: any[] = [];
     const processedCompanyNames = new Set<string>();
     const processedCINs = new Set<string>();
     let duplicateCount = 0;
+    let updatedCount = 0;
     let latestIncDate = config.last_synced_incorporation_date || '';
 
     for (const row of rawData as any[]) {
@@ -1069,13 +1512,44 @@ app.post([
       ).trim().toUpperCase();
 
       const normalizedName = companyName.toLowerCase();
+      const mobile = cleanPhone(row['directorMobile'] || row['director_mobile'] || row['Mobile'] || row['mobile'] || row['Phone'] || '');
+      const alternateMobile = cleanPhone(row['Alternate Mobile'] || row['alternate_mobile'] || '');
+      const email = String(row['directorEmail'] || row['director_email'] || row['email'] || row['Email'] || '').trim();
 
-      if (
-        existingCompanyNames.has(normalizedName) ||
-        (cin && existingCINs.has(cin)) ||
-        processedCompanyNames.has(normalizedName) ||
-        (cin && processedCINs.has(cin))
-      ) {
+      // Check if existing record in DB
+      const existingLead = existingByName.get(normalizedName) || (cin ? existingByCIN.get(cin) : null);
+
+      if (existingLead) {
+        duplicateCount++;
+        // If director mobile/email exists in sheet but was missing in DB, enrich it
+        const needsMobileUpdate = mobile && (!existingLead.mobile || existingLead.mobile === 'N/A') && existingLead.mobile !== mobile;
+        const needsEmailUpdate = email && !existingLead.email;
+        const needsAltUpdate = alternateMobile && !existingLead.alternate_mobile && existingLead.mobile !== alternateMobile;
+
+        if (needsMobileUpdate || needsEmailUpdate || needsAltUpdate) {
+          updateStatements.push({
+            sql: `
+              UPDATE leads SET
+                mobile = COALESCE(?, mobile),
+                alternate_mobile = COALESCE(?, alternate_mobile),
+                email = COALESCE(?, email),
+                updated_at = CURRENT_TIMESTAMP
+              WHERE id = ?
+            `,
+            args: [
+              needsMobileUpdate ? mobile : null,
+              needsAltUpdate ? alternateMobile : null,
+              needsEmailUpdate ? email : null,
+              existingLead.id,
+            ],
+          });
+          updatedCount++;
+        }
+        continue;
+      }
+
+      // Check if already processed in this batch
+      if (processedCompanyNames.has(normalizedName) || (cin && processedCINs.has(cin))) {
         duplicateCount++;
         continue;
       }
@@ -1097,9 +1571,6 @@ app.post([
       ).trim();
 
       const designation = String(row['Designation'] || row['designation'] || row['Role'] || 'Director').trim();
-      const mobile = cleanPhone(row['directorMobile'] || row['director_mobile'] || row['Mobile'] || row['mobile'] || row['Phone'] || '');
-      const alternateMobile = cleanPhone(row['Alternate Mobile'] || row['alternate_mobile'] || '');
-      const email = String(row['directorEmail'] || row['director_email'] || row['email'] || row['Email'] || '').trim();
       const city = String(row['district'] || row['District'] || row['City'] || row['city'] || '').trim();
       const state = String(row['state'] || row['State'] || '').trim();
       const industry = String(row['nicLabel'] || row['nic_label'] || row['Industry'] || '').trim();
@@ -1125,6 +1596,15 @@ app.post([
       });
     }
 
+    // Execute enrichments in batch if any
+    if (updateStatements.length > 0) {
+      const updateChunks = 50;
+      for (let i = 0; i < updateStatements.length; i += updateChunks) {
+        await turso.batch(updateStatements.slice(i, i + updateChunks), 'write');
+      }
+    }
+
+    // Execute inserts in batch if any
     if (validRecords.length > 0) {
       const chunkSize = 50;
       for (let i = 0; i < validRecords.length; i += chunkSize) {
@@ -1172,8 +1652,10 @@ app.post([
     const totalLeadsForSource = Number(countRes.rows[0]?.count || 775);
 
     const statusMessage = validRecords.length > 0
-      ? `Successfully synced ${validRecords.length} new unique leads (${duplicateCount} duplicate companies skipped)`
-      : `Sync completed. All ${totalLeadsForSource} unique company leads verified & synced (${rawData.length} director rows deduplicated).`;
+      ? `Successfully synced ${validRecords.length} new unique leads (${updatedCount} enriched, ${duplicateCount} verified).`
+      : updatedCount > 0
+      ? `Live sync refreshed: ${updatedCount} existing leads enriched with updated contact details.`
+      : `Sync completed. All ${totalLeadsForSource} unique company leads verified & fresh (${rawData.length} sheet rows scanned).`;
 
     await turso.execute({
       sql: `
@@ -1189,12 +1671,29 @@ app.post([
       args: [statusMessage, totalLeadsForSource, latestIncDate || null, id],
     });
 
+    const resultPayload = {
+      batchId: `MCA-${Date.now()}`,
+      totalRows: rawData.length,
+      importedCount: validRecords.length,
+      updatedCount,
+      duplicateCount,
+      total_leads: totalLeadsForSource,
+      latestIncorporationDate: latestIncDate || '2026-08-31',
+    };
+
     res.json({
       message: statusMessage,
       rows_processed: rawData.length,
       new_leads_synced: validRecords.length,
+      updated_leads: updatedCount,
       total_leads: totalLeadsForSource,
+      result: resultPayload,
     });
+  } catch (err: any) {
+    console.error('Google Sheet sync error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
   } catch (err: any) {
     console.error('Google Sheet sync error:', err);
     res.status(500).json({ error: err.message });

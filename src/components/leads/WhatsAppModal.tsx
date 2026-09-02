@@ -26,32 +26,38 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
 
   if (!lead) return null;
 
-  const cleanPhone = lead.mobile.replace(/[^0-9]/g, '');
+  const rawMobile = String(lead.mobile || lead.alternate_mobile || '');
+  const digits = rawMobile.replace(/[^0-9]/g, '');
+  const formattedPhone = digits.length === 10 ? `91${digits}` : digits;
 
   const templates: Record<string, { title: string; text: string }> = {
     intro: {
       title: 'Introduction & Value Proposition',
-      text: `Hello ${lead.contact_person}, this is ${lead.assigned_consultant_name || 'your consultant'} from Dizibrand.\n\nWe noticed ${lead.company_name} is scaling rapidly. We specialize in digital marketing, compliance, and growth consulting designed for enterprises in your industry.\n\nWould you be open for a brief 10-minute discovery call this week?`,
+      text: `Hello ${lead.contact_person || 'Director'}, this is ${lead.assigned_consultant_name || 'your consultant'} from Dizibrand.\n\nWe noticed ${lead.company_name} is scaling rapidly. We specialize in digital marketing, compliance, and growth consulting designed for enterprises in your industry.\n\nWould you be open for a brief 10-minute discovery call this week?`,
     },
     pitch_deck: {
       title: 'Share Company Portfolio Deck',
-      text: `Hi ${lead.contact_person}, thank you for your time on our recent call. As discussed, I am sharing our corporate portfolio and case studies for ${lead.company_name}.\n\nPlease let me know a suitable time to discuss the tailored proposal.`,
+      text: `Hi ${lead.contact_person || 'Director'}, thank you for your time on our recent call. As discussed, I am sharing our corporate portfolio and case studies for ${lead.company_name}.\n\nPlease let me know a suitable time to discuss the tailored proposal.`,
     },
     follow_up: {
       title: 'Follow-up on Proposal / Discussion',
-      text: `Hi ${lead.contact_person}, hope you are doing well!\n\nJust following up regarding our previous discussion for ${lead.company_name}. Did you get a chance to review the details we shared? Looking forward to your thoughts.`,
+      text: `Hi ${lead.contact_person || 'Director'}, hope you are doing well!\n\nJust following up regarding our previous discussion for ${lead.company_name}. Did you get a chance to review the details we shared? Looking forward to your thoughts.`,
     },
     meeting_confirm: {
       title: 'Discovery Meeting Confirmation',
-      text: `Hi ${lead.contact_person}, confirming our scheduled discovery meeting with our leadership team for ${lead.next_followup_date || 'tomorrow'}.\n\nPlease let me know if you need to adjust the timing.`,
+      text: `Hi ${lead.contact_person || 'Director'}, confirming our scheduled discovery meeting with our leadership team for ${lead.next_followup_date || 'tomorrow'}.\n\nPlease let me know if you need to adjust the timing.`,
     },
   };
 
   const messageToSend = customMessage || (templates[template] ? templates[template].text : '');
 
   const handleOpenWhatsApp = () => {
+    if (!formattedPhone || formattedPhone.length < 10) {
+      toast.error('No valid phone number found for this lead.');
+      return;
+    }
     const encoded = encodeURIComponent(messageToSend);
-    const waUrl = `https://wa.me/${cleanPhone}?text=${encoded}`;
+    const waUrl = `https://wa.me/${formattedPhone}?text=${encoded}`;
     window.open(waUrl, '_blank');
   };
 

@@ -56,7 +56,12 @@ export const BulkActionModal: React.FC<BulkActionModalProps> = ({
       } else if (actionType === 'business') {
         if (!selectedBusiness) throw new Error('Please select a business vertical');
         await api.leads.bulkBusiness(selectedIds, Number(selectedBusiness));
-        toast.success(`Mapped ${selectedIds.length} leads to internal business!`);
+        if (selectedConsultant) {
+          await api.leads.bulkAssign(selectedIds, Number(selectedConsultant));
+          toast.success(`Mapped ${selectedIds.length} leads to company & assigned consultant!`);
+        } else {
+          toast.success(`Mapped ${selectedIds.length} leads to internal business!`);
+        }
       }
 
       onSuccess();
@@ -226,22 +231,46 @@ export const BulkActionModal: React.FC<BulkActionModalProps> = ({
         )}
 
         {actionType === 'business' && isSuperAdmin && (
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-              Select Internal Business Vertical (Admin Only)
-            </label>
-            <select
-              value={selectedBusiness}
-              onChange={(e) => setSelectedBusiness(e.target.value)}
-              className="w-full px-3 py-2.5 text-xs text-slate-900 bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-semibold shadow-sm"
-            >
-              <option value="" className="text-slate-900 font-medium">Select a Business Vertical...</option>
-              {businesses.map((b) => (
-                <option key={b.id} value={b.id} className="text-slate-900 font-medium">
-                  {b.name} ({b.code})
-                </option>
-              ))}
-            </select>
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                Select Company / Business Vertical <span className="text-rose-500">*</span>
+              </label>
+              <select
+                value={selectedBusiness}
+                onChange={(e) => setSelectedBusiness(e.target.value)}
+                className="w-full px-3 py-2.5 text-xs text-slate-900 bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-semibold shadow-sm"
+                required
+              >
+                <option value="" className="text-slate-900 font-medium">Select a Business Vertical...</option>
+                {businesses.map((b) => (
+                  <option key={b.id} value={b.id} className="text-slate-900 font-medium">
+                    {b.name} ({b.code})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="bg-indigo-50/60 p-3 rounded-xl border border-indigo-100">
+              <label className="block text-xs font-bold text-indigo-950 mb-1">
+                Step 2: Assign to Consultant (Optional)
+              </label>
+              <p className="text-[11px] text-slate-500 mb-2">
+                Allocate directly to a consultant now, or leave in the company pool for subsequent assignment.
+              </p>
+              <select
+                value={selectedConsultant}
+                onChange={(e) => setSelectedConsultant(e.target.value)}
+                className="w-full px-3 py-2 text-xs text-slate-900 bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-semibold shadow-sm"
+              >
+                <option value="" className="text-slate-900 font-medium">Leave in Company Pool (Unassigned to Consultant)</option>
+                {consultants.filter(c => Boolean(c.is_active)).map((c) => (
+                  <option key={c.id} value={c.id} className="text-slate-900 font-medium">
+                    {c.name} ({c.email})
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         )}
 
