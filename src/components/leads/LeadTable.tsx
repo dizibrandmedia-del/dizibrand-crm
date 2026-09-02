@@ -172,7 +172,7 @@ export const LeadTable: React.FC<LeadTableProps> = ({
                 )}
 
                 {/* Actions */}
-                <td className="py-3.5 px-3 text-right" onClick={(e) => e.stopPropagation()}>
+                <td className="py-3.5 px-3 text-right">
                   <div className="flex items-center justify-end gap-1.5">
                     <button
                       type="button"
@@ -181,9 +181,9 @@ export const LeadTable: React.FC<LeadTableProps> = ({
                         onCall(lead);
                       }}
                       title="Direct Call"
-                      className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white transition shadow-2xs cursor-pointer"
+                      className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white transition shadow-2xs cursor-pointer active:scale-90"
                     >
-                      <Phone className="w-3.5 h-3.5" />
+                      <Phone className="w-3.5 h-3.5 pointer-events-none" />
                     </button>
                     <button
                       type="button"
@@ -192,9 +192,9 @@ export const LeadTable: React.FC<LeadTableProps> = ({
                         onWhatsApp(lead);
                       }}
                       title="Direct WhatsApp"
-                      className="p-1.5 rounded-lg bg-teal-50 text-teal-600 hover:bg-teal-600 hover:text-white transition shadow-2xs cursor-pointer"
+                      className="p-1.5 rounded-lg bg-teal-50 text-teal-600 hover:bg-teal-600 hover:text-white transition shadow-2xs cursor-pointer active:scale-90"
                     >
-                      <MessageCircle className="w-3.5 h-3.5" />
+                      <MessageCircle className="w-3.5 h-3.5 pointer-events-none" />
                     </button>
                     <button
                       type="button"
@@ -203,9 +203,9 @@ export const LeadTable: React.FC<LeadTableProps> = ({
                         onFollowup(lead);
                       }}
                       title="Schedule Follow-up"
-                      className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white transition shadow-2xs cursor-pointer"
+                      className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white transition shadow-2xs cursor-pointer active:scale-90"
                     >
-                      <Calendar className="w-3.5 h-3.5" />
+                      <Calendar className="w-3.5 h-3.5 pointer-events-none" />
                     </button>
                     {lead.status !== 'OWNER_HANDOVER' && lead.status !== 'WON' && (
                       <button
@@ -215,9 +215,9 @@ export const LeadTable: React.FC<LeadTableProps> = ({
                           onPotentialHandover(lead);
                         }}
                         title="Send as Potential Lead"
-                        className="p-1.5 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-600 hover:text-white transition shadow-2xs cursor-pointer"
+                        className="p-1.5 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-600 hover:text-white transition shadow-2xs cursor-pointer active:scale-90"
                       >
-                        <Sparkles className="w-3.5 h-3.5" />
+                        <Sparkles className="w-3.5 h-3.5 pointer-events-none" />
                       </button>
                     )}
                     <button
@@ -227,9 +227,9 @@ export const LeadTable: React.FC<LeadTableProps> = ({
                         onViewDetails(lead);
                       }}
                       title="View Lead Details"
-                      className="p-1.5 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-800 hover:text-white transition shadow-2xs cursor-pointer"
+                      className="p-1.5 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-800 hover:text-white transition shadow-2xs cursor-pointer active:scale-90"
                     >
-                      <Eye className="w-3.5 h-3.5" />
+                      <Eye className="w-3.5 h-3.5 pointer-events-none" />
                     </button>
                   </div>
                 </td>
