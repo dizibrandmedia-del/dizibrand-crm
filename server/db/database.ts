@@ -164,6 +164,23 @@ export const db: IDatabase = {
 
         // 4. Leads Queries
         if (upper.includes('FROM LEADS')) {
+          const enrichLead = (l: any) => {
+            if (!l) return l;
+            const biz = memoryStore.businesses.find((b) => Number(b.id) === Number(l.internal_business_id));
+            const user = memoryStore.users.find((u) => Number(u.id) === Number(l.assigned_consultant_id));
+            const src = memoryStore.lead_sources.find((s) => Number(s.id) === Number(l.source_id));
+            return {
+              ...l,
+              business_name: biz ? biz.name : l.business_name,
+              internal_business_name: biz ? biz.name : (l.internal_business_name || l.business_name),
+              business_code: biz ? biz.code : l.business_code,
+              assigned_consultant_name: user ? user.name : l.assigned_consultant_name,
+              assigned_consultant_mobile: user ? user.mobile : l.assigned_consultant_mobile,
+              assigned_consultant_email: user ? user.email : l.assigned_consultant_email,
+              source_name: src ? src.name : l.source_name,
+            };
+          };
+
           if (upper.includes('COUNT(*)')) {
             let count = memoryStore.leads.length;
             if (upper.includes('ASSIGNED_CONSULTANT_ID = ?')) {
@@ -171,21 +188,21 @@ export const db: IDatabase = {
             }
             return [{ count, total: count, total_leads: count }];
           }
-          if (upper.includes('WHERE ID = ?')) {
-            return memoryStore.leads.filter((l) => Number(l.id) === Number(args[0]));
+          if (upper.includes('WHERE LEADS.ID = ?') || upper.includes('WHERE ID = ?')) {
+            return memoryStore.leads.filter((l) => Number(l.id) === Number(args[0])).map(enrichLead);
           }
-          if (upper.includes('WHERE LEAD_ID = ?')) {
-            return memoryStore.leads.filter((l) => l.lead_id === String(args[0]));
+          if (upper.includes('WHERE LEADS.LEAD_ID = ?') || upper.includes('WHERE LEAD_ID = ?')) {
+            return memoryStore.leads.filter((l) => l.lead_id === String(args[0])).map(enrichLead);
           }
-          if (upper.includes('WHERE ASSIGNED_CONSULTANT_ID = ?')) {
-            return memoryStore.leads.filter((l) => Number(l.assigned_consultant_id) === Number(args[0]));
+          if (upper.includes('WHERE ASSIGNED_CONSULTANT_ID = ?') || upper.includes('WHERE LEADS.ASSIGNED_CONSULTANT_ID = ?')) {
+            return memoryStore.leads.filter((l) => Number(l.assigned_consultant_id) === Number(args[0])).map(enrichLead);
           }
           if (upper.includes('LIMIT')) {
             const limit = typeof args[args.length - 2] === 'number' ? args[args.length - 2] : 50;
             const offset = typeof args[args.length - 1] === 'number' ? args[args.length - 1] : 0;
-            return memoryStore.leads.slice(offset, offset + limit);
+            return memoryStore.leads.slice(offset, offset + limit).map(enrichLead);
           }
-          return memoryStore.leads.slice(0, 100);
+          return memoryStore.leads.slice(0, 100).map(enrichLead);
         }
 
         // 5. Google Sheet Configs
