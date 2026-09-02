@@ -3,83 +3,39 @@
 @tailwind utilities;
 
 @layer base {
-  :root {
-    --bg-primary: #f8fafc;
-    --text-primary: #0f172a;
-    --text-muted: #64748b;
-    --border-subtle: #e2e8f0;
-    --card-bg: #ffffff;
-  }
-
-  .dark {
-    --bg-primary: #090e17;
-    --text-primary: #f1f5f9;
-    --text-muted: #94a3b8;
-    --border-subtle: #1e293b;
-    --card-bg: #0f172a;
-  }
-
   body {
-    @apply font-sans antialiased selection:bg-[#ed1a3b] selection:text-white transition-colors duration-200;
-    background-color: var(--bg-primary);
-    color: var(--text-primary);
+    @apply font-sans bg-slate-50 text-slate-900 antialiased selection:bg-indigo-500 selection:text-white;
   }
 }
 
-/* DiziBook Modern Scrollbar */
+/* Custom modern scrollbar */
 ::-webkit-scrollbar {
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
-.dark ::-webkit-scrollbar-track {
-  background: #090e17;
-}
 ::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.4);
+  background: rgba(148, 163, 184, 0.5);
   border-radius: 9999px;
 }
-.dark ::-webkit-scrollbar-thumb {
-  background: #1e293b;
-}
 ::-webkit-scrollbar-thumb:hover {
-  background: #ed1a3b;
+  background: rgba(100, 116, 139, 0.8);
 }
 
-/* Glassmorphism helpers matching DiziBook */
+/* Glassmorphism helpers */
 .glass-panel {
-  background: rgba(255, 255, 255, 0.9);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border: 1px solid rgba(226, 232, 240, 0.9);
-}
-
-.dark .glass-panel {
-  background: rgba(15, 23, 42, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.glass-card {
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(226, 232, 240, 0.8);
 }
 
-.dark .glass-card {
-  background: rgba(15, 23, 42, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-}
-
-.glass-card:hover, .dark .glass-card:hover {
-  border-color: rgba(237, 26, 59, 0.45);
-}
-
-/* Glow Brand Accents */
-.glow-brand {
-  box-shadow: 0 0 50px -10px rgba(237, 26, 59, 0.35);
+.glass-card {
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 /* Pulse badge animation for hot leads & overdue followups */

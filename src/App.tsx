@@ -2,7 +2,6 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext.js';
 import { NotificationProvider } from './context/NotificationContext.js';
-import { ThemeProvider, useTheme } from './context/ThemeContext.js';
 import { Toaster } from 'sonner';
 
 // Layouts
@@ -92,21 +91,15 @@ const RootRedirect: React.FC = () => {
   return <Navigate to="/consultant/dashboard" replace />;
 };
 
-const ThemedToaster: React.FC = () => {
-  const { theme } = useTheme();
-  return <Toaster richColors position="top-right" theme={theme} />;
-};
-
 export const App: React.FC = () => {
   return (
     <BrowserRouter>
-      <ThemeProvider>
-        <AuthProvider>
-          <NotificationProvider>
-            <ThemedToaster />
-            <Routes>
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/" element={<RootRedirect />} />
+      <AuthProvider>
+        <NotificationProvider>
+          <Toaster richColors position="top-right" theme="dark" />
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/" element={<RootRedirect />} />
 
             {/* Super Admin Protected Routes */}
             <Route
@@ -158,7 +151,6 @@ export const App: React.FC = () => {
           </Routes>
         </NotificationProvider>
       </AuthProvider>
-    </ThemeProvider>
-  </BrowserRouter>
-);
+    </BrowserRouter>
+  );
 };
