@@ -84,11 +84,13 @@ export const LeadTable: React.FC<LeadTableProps> = ({
                   >
                     {lead.company_name}
                   </span>
-                  <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-slate-400">
-                    <span>{lead.city || 'India'}</span>
+                  <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-slate-500">
+                    <span className="font-medium text-slate-600">
+                      {lead.city && lead.state ? `${lead.city}, ${lead.state}` : (lead.city || lead.state || 'India')}
+                    </span>
                     {lead.source_name && (
                       <>
-                        <span>•</span>
+                        <span className="text-slate-300">•</span>
                         <span>{lead.source_name}</span>
                       </>
                     )}

@@ -129,6 +129,11 @@ export const api = {
         proposals: Proposal[];
         deal?: Deal;
       }>(`/leads/${id}`),
+    getLocations: () =>
+      request<{
+        states: { state: string; count: number }[];
+        cities: { city: string; state: string; count: number }[];
+      }>('/leads/locations'),
     create: (leadData: Partial<Lead> & { initial_remark?: string; tag_ids?: number[] }) =>
       request<{ message: string; lead_id: string; id: number }>('/leads', {
         method: 'POST',

@@ -365,7 +365,7 @@ app.get(['/api/sources', '/sources'], authenticateToken, async (req, res) => {
 // 6. Leads Endpoints
 app.get(['/api/leads', '/leads'], authenticateToken, async (req: any, res) => {
   try {
-    const { page = 1, limit = 50, status, search, consultant_id, business_id } = req.query;
+    const { page = 1, limit = 50, status, search, consultant_id, business_id, priority, source_id, state, city } = req.query;
     const offset = (Number(page) - 1) * Number(limit);
 
     let whereClause = 'WHERE 1=1';
@@ -386,6 +386,26 @@ app.get(['/api/leads', '/leads'], authenticateToken, async (req: any, res) => {
       args.push(status);
     }
 
+    if (priority) {
+      whereClause += ' AND priority = ?';
+      args.push(priority);
+    }
+
+    if (source_id) {
+      whereClause += ' AND source_id = ?';
+      args.push(source_id);
+    }
+
+    if (state && String(state).trim()) {
+      whereClause += ' AND state = ?';
+      args.push(String(state).trim());
+    }
+
+    if (city && String(city).trim()) {
+      whereClause += ' AND city = ?';
+      args.push(String(city).trim());
+    }
+
     if (business_id === 'unassigned' || business_id === 'unmapped') {
       whereClause += ' AND internal_business_id IS NULL';
     } else if (business_id) {
@@ -394,9 +414,9 @@ app.get(['/api/leads', '/leads'], authenticateToken, async (req: any, res) => {
     }
 
     if (search) {
-      whereClause += ' AND (company_name LIKE ? OR contact_person LIKE ? OR mobile LIKE ? OR city LIKE ?)';
+      whereClause += ' AND (company_name LIKE ? OR contact_person LIKE ? OR mobile LIKE ? OR city LIKE ? OR state LIKE ? OR cin LIKE ?)';
       const term = `%${search}%`;
-      args.push(term, term, term, term);
+      args.push(term, term, term, term, term, term);
     }
 
     const countRes = await turso.execute({
@@ -436,6 +456,33 @@ app.get(['/api/leads', '/leads'], authenticateToken, async (req: any, res) => {
     });
   } catch (err: any) {
     console.error('Leads error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Distinct States & Cities for Geo Filtering
+app.get(['/api/leads/locations', '/leads/locations'], authenticateToken, async (req, res) => {
+  try {
+    const statesRes = await turso.execute(`
+      SELECT DISTINCT state, COUNT(*) as count 
+      FROM leads 
+      WHERE state IS NOT NULL AND TRIM(state) != '' 
+      GROUP BY state 
+      ORDER BY state ASC
+    `);
+    const citiesRes = await turso.execute(`
+      SELECT DISTINCT city, state, COUNT(*) as count 
+      FROM leads 
+      WHERE city IS NOT NULL AND TRIM(city) != '' 
+      GROUP BY city, state 
+      ORDER BY city ASC
+    `);
+    res.json({
+      states: statesRes.rows,
+      cities: citiesRes.rows,
+    });
+  } catch (err: any) {
+    console.error('Locations error:', err);
     res.status(500).json({ error: err.message });
   }
 });

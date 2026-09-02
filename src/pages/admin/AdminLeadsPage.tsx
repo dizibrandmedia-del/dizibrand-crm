@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../../api/client';
 import { Lead, User, Business, LeadSource, Tag } from '../../types';
 import { LeadTable } from '../../components/leads/LeadTable';
@@ -13,7 +13,7 @@ import { PotentialHandoverModal } from '../../components/leads/PotentialHandover
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 import { EmptyState } from '../../components/common/EmptyState';
 import { toast } from 'sonner';
-import { Users, Plus, Download, UploadCloud, CheckSquare, Sparkles, Filter, Building2 } from 'lucide-react';
+import { Users, Plus, Download, UploadCloud, CheckSquare, Sparkles, Filter, Building2, MapPin, X } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 
 export const AdminLeadsPage: React.FC = () => {
@@ -30,12 +30,18 @@ export const AdminLeadsPage: React.FC = () => {
   const [consultantFilter, setConsultantFilter] = useState('');
   const [businessFilter, setBusinessFilter] = useState('');
   const [unassignedFilter, setUnassignedFilter] = useState('');
+  const [stateFilter, setStateFilter] = useState('');
+  const [cityFilter, setCityFilter] = useState('');
 
   // Dropdown auxiliary data
   const [consultants, setConsultants] = useState<User[]>([]);
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [sources, setSources] = useState<LeadSource[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
+  const [locations, setLocations] = useState<{
+    states: { state: string; count: number }[];
+    cities: { city: string; state: string; count: number }[];
+  }>({ states: [], cities: [] });
 
   // Selection state
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -49,16 +55,20 @@ export const AdminLeadsPage: React.FC = () => {
 
   const fetchAuxData = async () => {
     try {
-      const [cRes, bRes, sRes, tRes]: any[] = await Promise.all([
+      const [cRes, bRes, sRes, tRes, locRes]: any[] = await Promise.all([
         api.consultants.list().catch(() => ({ consultants: [] })),
         api.businesses.list().catch(() => ({ businesses: [] })),
         api.sources.list().catch(() => ({ sources: [] })),
         api.tags.list().catch(() => ({ tags: [] })),
+        api.leads.getLocations().catch(() => ({ states: [], cities: [] })),
       ]);
       setConsultants(Array.isArray(cRes) ? cRes : (cRes?.consultants || cRes?.users || []));
       setBusinesses(Array.isArray(bRes) ? bRes : (bRes?.businesses || []));
       setSources(Array.isArray(sRes) ? sRes : (sRes?.sources || []));
       setTags(Array.isArray(tRes) ? tRes : (tRes?.tags || []));
+      if (locRes && Array.isArray(locRes.states)) {
+        setLocations(locRes);
+      }
     } catch (err) {
       console.error('Failed to load auxiliary data:', err);
     }
@@ -76,6 +86,8 @@ export const AdminLeadsPage: React.FC = () => {
         source_id: sourceFilter ? Number(sourceFilter) : undefined,
         consultant_id: consultantFilter === 'unassigned' ? 'unassigned' : (consultantFilter ? Number(consultantFilter) : undefined),
         business_id: businessFilter === 'unassigned' ? 'unassigned' : (businessFilter ? Number(businessFilter) : undefined),
+        state: stateFilter || undefined,
+        city: cityFilter || undefined,
       });
 
       setLeads(res.leads);
@@ -93,7 +105,22 @@ export const AdminLeadsPage: React.FC = () => {
 
   useEffect(() => {
     fetchLeads(1);
-  }, [search, statusFilter, priorityFilter, sourceFilter, consultantFilter, businessFilter, unassignedFilter]);
+  }, [search, statusFilter, priorityFilter, sourceFilter, consultantFilter, businessFilter, unassignedFilter, stateFilter, cityFilter]);
+
+  const handleStateChange = (selectedState: string) => {
+    setStateFilter(selectedState);
+    if (selectedState && cityFilter) {
+      const cityMatches = locations.cities.some(
+        (c) => c.state?.toLowerCase() === selectedState.toLowerCase() && c.city.toLowerCase() === cityFilter.toLowerCase()
+      );
+      if (!cityMatches) setCityFilter('');
+    }
+  };
+
+  const filteredCities = useMemo(() => {
+    if (!stateFilter) return locations.cities;
+    return locations.cities.filter((c) => c.state?.toLowerCase() === stateFilter.toLowerCase());
+  }, [stateFilter, locations.cities]);
 
   const handleToggleSelect = (id: number) => {
     setSelectedIds((prev) =>
@@ -116,6 +143,8 @@ export const AdminLeadsPage: React.FC = () => {
       ...(sourceFilter ? { source_id: sourceFilter } : {}),
       ...(consultantFilter ? { assigned_consultant_id: consultantFilter } : {}),
       ...(businessFilter ? { internal_business_id: businessFilter } : {}),
+      ...(stateFilter ? { state: stateFilter } : {}),
+      ...(cityFilter ? { city: cityFilter } : {}),
     });
     window.location.href = `/api/exports/leads/csv?${params.toString()}`;
     toast.success('Lead database export initiated!');
@@ -129,6 +158,8 @@ export const AdminLeadsPage: React.FC = () => {
     setConsultantFilter('');
     setBusinessFilter('');
     setUnassignedFilter('');
+    setStateFilter('');
+    setCityFilter('');
   };
 
   return (
@@ -247,11 +278,47 @@ export const AdminLeadsPage: React.FC = () => {
         sourcesList={sources}
         onReset={handleResetFilters}
       >
+        {/* State Filter */}
+        <select
+          value={stateFilter}
+          onChange={(e) => handleStateChange(e.target.value)}
+          className={`px-3 py-2 text-xs font-medium border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 transition cursor-pointer ${
+            stateFilter
+              ? 'bg-indigo-50 border-indigo-300 text-indigo-900 font-bold ring-1 ring-indigo-200'
+              : 'bg-slate-50 border-slate-200 text-slate-700'
+          }`}
+        >
+          <option value="">All States ({locations.states.length})</option>
+          {locations.states.map((s) => (
+            <option key={s.state} value={s.state}>
+              {s.state} ({s.count})
+            </option>
+          ))}
+        </select>
+
+        {/* City Filter */}
+        <select
+          value={cityFilter}
+          onChange={(e) => setCityFilter(e.target.value)}
+          className={`px-3 py-2 text-xs font-medium border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 transition cursor-pointer ${
+            cityFilter
+              ? 'bg-indigo-50 border-indigo-300 text-indigo-900 font-bold ring-1 ring-indigo-200'
+              : 'bg-slate-50 border-slate-200 text-slate-700'
+          }`}
+        >
+          <option value="">{stateFilter ? `All Cities in ${stateFilter}` : `All Cities (${locations.cities.length})`}</option>
+          {filteredCities.map((c) => (
+            <option key={`${c.state}-${c.city}`} value={c.city}>
+              {c.city} ({c.count})
+            </option>
+          ))}
+        </select>
+
         {/* Admin specific filters */}
         <select
           value={consultantFilter}
           onChange={(e) => setConsultantFilter(e.target.value)}
-          className="px-3 py-2 text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700"
+          className="px-3 py-2 text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700 cursor-pointer"
         >
           <option value="">All Consultants</option>
           <option value="unassigned">Unassigned (Pending Consultant)</option>
@@ -265,7 +332,7 @@ export const AdminLeadsPage: React.FC = () => {
         <select
           value={businessFilter}
           onChange={(e) => setBusinessFilter(e.target.value)}
-          className="px-3 py-2 text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700"
+          className="px-3 py-2 text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700 cursor-pointer"
         >
           <option value="">All Businesses / Verticals</option>
           <option value="unassigned">Unmapped in Pool</option>
@@ -276,6 +343,30 @@ export const AdminLeadsPage: React.FC = () => {
           ))}
         </select>
       </SearchFilterBar>
+
+      {/* Active Geo Filter Banner */}
+      {(stateFilter || cityFilter) && (
+        <div className="flex items-center justify-between gap-2 px-3.5 py-2 bg-indigo-50/90 border border-indigo-200/80 rounded-xl text-xs text-indigo-900 shadow-xs">
+          <div className="flex items-center gap-2">
+            <MapPin className="w-4 h-4 text-indigo-600 shrink-0" />
+            <span>
+              <strong>Geo Filter Active:</strong>{' '}
+              {stateFilter && <span className="px-2 py-0.5 bg-indigo-100/80 rounded-md font-semibold text-indigo-950">{stateFilter}</span>}
+              {stateFilter && cityFilter && <span className="text-indigo-400 font-bold mx-1">›</span>}
+              {cityFilter && <span className="px-2 py-0.5 bg-indigo-100/80 rounded-md font-semibold text-indigo-950">{cityFilter}</span>}
+              <span className="text-slate-500 ml-2">({pagination.total} matching leads found)</span>
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => { setStateFilter(''); setCityFilter(''); }}
+            className="flex items-center gap-1 text-[11px] font-semibold text-indigo-700 hover:text-indigo-950 hover:bg-indigo-100 px-2 py-1 rounded-lg transition cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+            Clear Geo Filter
+          </button>
+        </div>
+      )}
 
       {/* Main Table View */}
       {isLoading ? (
