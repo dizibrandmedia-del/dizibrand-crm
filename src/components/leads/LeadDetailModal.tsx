@@ -7,8 +7,9 @@ import { toast } from 'sonner';
 import {
   Phone, MessageCircle, Calendar, Sparkles, Plus, Clock, MapPin,
   Globe, Mail, User, Building, FileText, CheckCircle2, History,
-  TrendingUp, ExternalLink, ShieldCheck
+  TrendingUp, ExternalLink, ShieldCheck, UserX
 } from 'lucide-react';
+import { ReassignWarningModal } from './ReassignWarningModal';
 
 interface LeadDetailModalProps {
   isOpen: boolean;
@@ -48,6 +49,7 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [newRemark, setNewRemark] = useState('');
   const [isAddingRemark, setIsAddingRemark] = useState(false);
+  const [isUnassignModalOpen, setIsUnassignModalOpen] = useState(false);
 
   const fetchLeadDetails = async () => {
     if (!leadId) return;
@@ -92,7 +94,8 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
   const lead = leadData?.lead;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} maxWidth="max-w-4xl">
+    <>
+      <Modal isOpen={isOpen} onClose={onClose} maxWidth="max-w-4xl">
       {isLoading || !lead ? (
         <div className="py-16 text-center">
           <div className="w-8 h-8 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto" />
@@ -403,15 +406,45 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
                       <span className="font-semibold">{lead.source_name || 'N/A'}</span>
                     </div>
                     <div>
-                      <span className="text-slate-400 block text-[10px]">Assigned Consultant</span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400 block text-[10px]">Assigned Consultant</span>
+                        {isSuperAdmin && lead.assigned_consultant_id && (
+                          <button
+                            type="button"
+                            onClick={() => setIsUnassignModalOpen(true)}
+                            className="text-[10px] text-amber-700 hover:text-amber-900 font-bold flex items-center gap-0.5 cursor-pointer"
+                            title="Unassign this lead from consultant"
+                          >
+                            <UserX className="w-2.5 h-2.5" />
+                            Unassign
+                          </button>
+                        )}
+                      </div>
                       <span className="font-semibold">{lead.assigned_consultant_name || 'Unassigned'}</span>
                     </div>
-                    {isSuperAdmin && lead.business_name && (
+                    {isSuperAdmin && (
                       <div className="col-span-2">
-                        <span className="text-slate-400 block text-[10px]">Internal Business Vertical</span>
-                        <span className="font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded">
-                          {lead.business_name}
-                        </span>
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400 block text-[10px]">Internal Business Vertical</span>
+                          {lead.internal_business_id && (
+                            <button
+                              type="button"
+                              onClick={() => setIsUnassignModalOpen(true)}
+                              className="text-[10px] text-amber-700 hover:text-amber-900 font-bold flex items-center gap-0.5 cursor-pointer"
+                              title="Unassign this lead from business category"
+                            >
+                              <UserX className="w-2.5 h-2.5" />
+                              Unassign
+                            </button>
+                          )}
+                        </div>
+                        {lead.business_name ? (
+                          <span className="font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded inline-block mt-0.5">
+                            {lead.business_name}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 italic">Unassigned (Inbound Pool)</span>
+                        )}
                       </div>
                     )}
                   </div>
@@ -504,5 +537,25 @@ export const LeadDetailModal: React.FC<LeadDetailModalProps> = ({
         </div>
       )}
     </Modal>
+
+      {isSuperAdmin && lead && (
+        <ReassignWarningModal
+          isOpen={isUnassignModalOpen}
+          onClose={() => setIsUnassignModalOpen(false)}
+          assignedLeads={[{
+            id: lead.id,
+            company_name: lead.company_name,
+            contact_person: lead.contact_person,
+            business_name: lead.business_name,
+            consultant_name: lead.assigned_consultant_name,
+          }]}
+          targetLabel={`Lead "${lead.company_name}"`}
+          onUnassignSuccess={() => {
+            fetchLeadDetails();
+            onStatusUpdated?.();
+          }}
+        />
+      )}
+    </>
   );
 };

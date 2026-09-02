@@ -757,13 +757,18 @@ app.get(['/api/followups', '/followups'], authenticateToken, async (req: any, re
     const followupsRes = await turso.execute({
       sql: `
         SELECT follow_ups.*,
-               leads.lead_id, leads.company_name, leads.contact_person,
+               leads.lead_id, leads.lead_id as lead_code, leads.company_name, leads.contact_person,
                leads.mobile, leads.email, leads.city, leads.status as lead_status,
                leads.lead_score, leads.priority as lead_priority,
-               users.name as consultant_name
+               leads.internal_business_id,
+               businesses.name as business_name,
+               businesses.name as internal_business_name,
+               users.name as consultant_name,
+               users.name as assigned_consultant_name
         FROM follow_ups
         JOIN leads ON leads.id = follow_ups.lead_id
         JOIN users ON users.id = follow_ups.consultant_id
+        LEFT JOIN businesses ON businesses.id = leads.internal_business_id
         ${whereClause}
         ORDER BY follow_ups.followup_date ASC, follow_ups.followup_time ASC
       `,
@@ -902,10 +907,211 @@ app.post(['/api/potential-leads/handover', '/potential-leads/handover'], authent
     res.status(201).json({
       message: 'Potential lead handed over successfully for leadership review',
       handover_id: hRes.rows[0]?.id,
+      lead_status: 'OWNER_HANDOVER',
     });
   } catch (err: any) {
     console.error('Handover error:', err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Potential Leads List (Admin Dashboard & Consultant Submissions Queue)
+app.get(['/api/potential-leads', '/potential-leads'], authenticateToken, async (req: any, res) => {
+  try {
+    const user = req.user;
+    const { status, search } = req.query;
+
+    const conditions: string[] = [];
+    const params: any[] = [];
+
+    if (user.role === 'CONSULTANT') {
+      conditions.push('potential_handovers.consultant_id = ?');
+      params.push(user.id);
+    }
+
+    if (status && status !== 'undefined' && status !== '') {
+      conditions.push('potential_handovers.admin_status = ?');
+      params.push(status);
+    }
+
+    if (search && String(search).trim()) {
+      const term = `%${String(search).trim()}%`;
+      conditions.push('(potential_handovers.company_name LIKE ? OR potential_handovers.contact_person LIKE ? OR potential_handovers.requirement LIKE ? OR leads.city LIKE ?)');
+      params.push(term, term, term, term);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const sql = `
+      SELECT 
+        potential_handovers.*,
+        leads.lead_id,
+        leads.lead_id as lead_code,
+        leads.cin,
+        leads.city,
+        leads.state,
+        leads.lead_score,
+        leads.lead_score_band,
+        leads.priority,
+        leads.status as current_lead_status,
+        leads.last_activity_at,
+        leads.next_followup_date,
+        leads.next_followup_time,
+        consultant.name as consultant_name,
+        consultant.email as consultant_email,
+        consultant.mobile as consultant_mobile,
+        businesses.name as business_name,
+        businesses.name as internal_business_name
+      FROM potential_handovers
+      JOIN leads ON leads.id = potential_handovers.lead_id
+      JOIN users as consultant ON consultant.id = potential_handovers.consultant_id
+      LEFT JOIN businesses ON businesses.id = leads.internal_business_id
+      ${whereClause}
+      ORDER BY potential_handovers.created_at DESC
+    `;
+
+    const result = await turso.execute({ sql, args: params });
+    res.json({ potentialLeads: result.rows });
+  } catch (error: any) {
+    console.error('Fetch potential leads error:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch potential leads' });
+  }
+});
+
+// Potential Lead Admin Action & Closing Takeover (Super Admin Only)
+app.patch(['/api/potential-leads/:id/admin-action', '/potential-leads/:id/admin-action'], authenticateToken, async (req: any, res) => {
+  try {
+    const user = req.user;
+    if (user.role !== 'SUPER_ADMIN') {
+      return res.status(403).json({ error: 'Super Admin access required for takeover actions' });
+    }
+
+    const handoverId = Number(req.params.id);
+    const { admin_status, admin_notes, lead_status } = req.body;
+
+    const existingRes = await turso.execute({
+      sql: 'SELECT * FROM potential_handovers WHERE id = ?',
+      args: [handoverId],
+    });
+    const existing: any = existingRes.rows[0];
+    if (!existing) {
+      return res.status(404).json({ error: 'Potential handover record not found' });
+    }
+
+    await turso.execute({
+      sql: `
+        UPDATE potential_handovers SET 
+          admin_status = COALESCE(?, admin_status),
+          admin_notes = COALESCE(?, admin_notes),
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `,
+      args: [admin_status || null, admin_notes !== undefined ? admin_notes : null, handoverId],
+    });
+
+    const targetStatus = lead_status || (
+      admin_status === 'CONTACTED' ? 'OWNER_CONTACT' :
+      admin_status === 'MEETING_SET' ? 'MEETING' :
+      admin_status === 'PROPOSAL_SENT' ? 'PROPOSAL' :
+      admin_status === 'NEGOTIATING' ? 'NEGOTIATION' :
+      admin_status === 'WON' ? 'WON' :
+      admin_status === 'LOST' ? 'LOST' : null
+    );
+
+    if (targetStatus) {
+      await turso.execute({
+        sql: `
+          UPDATE leads SET 
+            status = ?,
+            last_activity_at = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `,
+        args: [targetStatus, existing.lead_id],
+      });
+
+      try {
+        await turso.execute({
+          sql: `
+            INSERT INTO lead_activities (lead_id, user_id, activity_type, title, description, created_at)
+            VALUES (?, ?, 'OWNER_CONTACT', 'Super Admin Takeover Update', ?, CURRENT_TIMESTAMP)
+          `,
+          args: [
+            existing.lead_id,
+            user.id,
+            admin_notes || `Super Admin updated handover status to "${admin_status}". Lead status updated to "${targetStatus}".`,
+          ],
+        });
+      } catch (_) {}
+    }
+
+    if (existing.consultant_id) {
+      try {
+        await turso.execute({
+          sql: `
+            INSERT INTO notifications (user_id, title, message, type, link_url, created_at)
+            VALUES (?, 'Potential Lead Update', ?, 'POTENTIAL_LEAD', '/consultant/potential', CURRENT_TIMESTAMP)
+          `,
+          args: [
+            existing.consultant_id,
+            `Super Admin updated your potential handover for ${existing.company_name} to: ${admin_status}`,
+          ],
+        });
+      } catch (_) {}
+    }
+
+    res.json({
+      message: 'Potential lead status updated successfully',
+      admin_status,
+      lead_status: targetStatus,
+    });
+  } catch (error: any) {
+    console.error('Admin takeover error:', error);
+    res.status(500).json({ error: error.message || 'Failed to update potential lead' });
+  }
+});
+
+// Single Potential Lead Detail
+app.get(['/api/potential-leads/:id', '/potential-leads/:id'], authenticateToken, async (req: any, res) => {
+  try {
+    const handoverId = Number(req.params.id);
+    const handoverRes = await turso.execute({
+      sql: `
+        SELECT 
+          potential_handovers.*,
+          leads.lead_id,
+          leads.lead_id as lead_code,
+          leads.cin,
+          leads.city,
+          leads.state,
+          leads.lead_score,
+          leads.lead_score_band,
+          leads.priority,
+          leads.status as current_lead_status,
+          consultant.name as consultant_name,
+          consultant.email as consultant_email,
+          consultant.mobile as consultant_mobile,
+          businesses.name as business_name,
+          businesses.name as internal_business_name
+        FROM potential_handovers
+        JOIN leads ON leads.id = potential_handovers.lead_id
+        JOIN users as consultant ON consultant.id = potential_handovers.consultant_id
+        LEFT JOIN businesses ON businesses.id = leads.internal_business_id
+        WHERE potential_handovers.id = ?
+      `,
+      args: [handoverId],
+    });
+    const handover = handoverRes.rows[0];
+    if (!handover) return res.status(404).json({ error: 'Handover not found' });
+
+    const activitiesRes = await turso.execute({
+      sql: `SELECT * FROM lead_activities WHERE lead_id = ? ORDER BY created_at DESC`,
+      args: [(handover as any).lead_id],
+    });
+
+    res.json({ handover, activities: activitiesRes.rows });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to fetch handover' });
   }
 });
 
@@ -1155,18 +1361,689 @@ app.delete(['/api/tasks/:id', '/tasks/:id'], authenticateToken, async (req: any,
   }
 });
 
-// Bulk operations & Single Lead Updates
-app.post(['/api/leads/assign', '/leads/assign'], authenticateToken, async (req, res) => {
+// ==========================================
+// Sales Pipeline Endpoints (Meetings, Proposals, Deals)
+// ==========================================
+
+// Meetings List
+app.get(['/api/sales/meetings', '/sales/meetings'], authenticateToken, async (req: any, res) => {
   try {
-    const { lead_ids, consultant_id } = req.body;
+    const user = req.user;
+    const { status, lead_id } = req.query;
+
+    const conditions: string[] = [];
+    const params: any[] = [];
+
+    if (lead_id) {
+      conditions.push('meetings.lead_id = ?');
+      params.push(Number(lead_id));
+    }
+    if (status) {
+      conditions.push('meetings.status = ?');
+      params.push(status);
+    }
+    if (user.role === 'CONSULTANT') {
+      conditions.push('leads.assigned_consultant_id = ?');
+      params.push(user.id);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const sql = `
+      SELECT 
+        meetings.*,
+        leads.lead_id as lead_code,
+        leads.company_name,
+        leads.contact_person,
+        leads.mobile,
+        leads.email,
+        creator.name as created_by_name
+      FROM meetings
+      JOIN leads ON leads.id = meetings.lead_id
+      LEFT JOIN users as creator ON creator.id = meetings.created_by_id
+      ${whereClause}
+      ORDER BY meetings.meeting_date ASC, meetings.meeting_time ASC
+    `;
+
+    const result = await turso.execute({ sql, args: params });
+    res.json({ meetings: result.rows });
+  } catch (error: any) {
+    console.error('Fetch meetings error:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch meetings' });
+  }
+});
+
+// Schedule Meeting
+app.post(['/api/sales/meetings', '/sales/meetings'], authenticateToken, async (req: any, res) => {
+  try {
+    const user = req.user;
+    const {
+      lead_id,
+      title,
+      meeting_date,
+      meeting_time = '11:00',
+      meeting_type = 'ONLINE_VIDEO',
+      participants,
+      notes,
+    } = req.body;
+
+    if (!lead_id || !title || !meeting_date) {
+      return res.status(400).json({ error: 'lead_id, title, and meeting_date are required' });
+    }
+
+    const leadId = Number(lead_id);
+    const mRes = await turso.execute({
+      sql: `
+        INSERT INTO meetings (
+          lead_id, title, meeting_date, meeting_time, meeting_type,
+          participants, notes, status, created_by_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'SCHEDULED', ?)
+        RETURNING id
+      `,
+      args: [leadId, title, meeting_date, meeting_time, meeting_type, participants || null, notes || null, user.id],
+    });
+
+    await turso.execute({
+      sql: `
+        UPDATE leads SET 
+          status = 'MEETING', 
+          last_activity_at = CURRENT_TIMESTAMP,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `,
+      args: [leadId],
+    });
+
+    try {
+      await turso.execute({
+        sql: `
+          INSERT INTO lead_activities (lead_id, user_id, activity_type, title, description, created_at)
+          VALUES (?, ?, 'MEETING', ?, ?, CURRENT_TIMESTAMP)
+        `,
+        args: [
+          leadId,
+          user.id,
+          `Meeting Scheduled: ${title}`,
+          `Date: ${meeting_date} at ${meeting_time} (${meeting_type})`,
+        ],
+      });
+    } catch (_) {}
+
+    res.status(201).json({
+      message: 'Meeting scheduled successfully',
+      meeting_id: mRes.rows[0]?.id,
+    });
+  } catch (error: any) {
+    console.error('Create meeting error:', error);
+    res.status(500).json({ error: error.message || 'Failed to schedule meeting' });
+  }
+});
+
+// Proposals List
+app.get(['/api/sales/proposals', '/sales/proposals'], authenticateToken, async (req: any, res) => {
+  try {
+    const user = req.user;
+    const { status, lead_id } = req.query;
+
+    const conditions: string[] = [];
+    const params: any[] = [];
+
+    if (lead_id) {
+      conditions.push('proposals.lead_id = ?');
+      params.push(Number(lead_id));
+    }
+    if (status) {
+      conditions.push('proposals.status = ?');
+      params.push(status);
+    }
+    if (user.role === 'CONSULTANT') {
+      conditions.push('leads.assigned_consultant_id = ?');
+      params.push(user.id);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const sql = `
+      SELECT 
+        proposals.*,
+        leads.lead_id as lead_code,
+        leads.company_name,
+        leads.contact_person,
+        leads.mobile,
+        leads.email,
+        creator.name as created_by_name
+      FROM proposals
+      JOIN leads ON leads.id = proposals.lead_id
+      LEFT JOIN users as creator ON creator.id = proposals.created_by_id
+      ${whereClause}
+      ORDER BY proposals.created_at DESC
+    `;
+
+    const result = await turso.execute({ sql, args: params });
+    res.json({ proposals: result.rows });
+  } catch (error: any) {
+    console.error('Fetch proposals error:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch proposals' });
+  }
+});
+
+// Create Proposal
+app.post(['/api/sales/proposals', '/sales/proposals'], authenticateToken, async (req: any, res) => {
+  try {
+    const user = req.user;
+    const {
+      lead_id,
+      service_name,
+      value,
+      currency = 'INR',
+      status = 'SENT',
+      follow_up_date,
+      notes,
+    } = req.body;
+
+    if (!lead_id || !service_name || value === undefined) {
+      return res.status(400).json({ error: 'lead_id, service_name, and value are required' });
+    }
+
+    const leadId = Number(lead_id);
+    const year = new Date().getFullYear();
+    const countRes = await turso.execute('SELECT COUNT(*) as count FROM proposals');
+    const count = Number(countRes.rows[0]?.count || 0);
+    const proposalCode = `PROP-${year}-${String(count + 1).padStart(4, '0')}`;
+    const propDate = new Date().toISOString().split('T')[0];
+
+    const pRes = await turso.execute({
+      sql: `
+        INSERT INTO proposals (
+          lead_id, service_name, proposal_code, proposal_date,
+          value, currency, status, follow_up_date, notes, created_by_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        RETURNING id
+      `,
+      args: [
+        leadId,
+        service_name,
+        proposalCode,
+        propDate,
+        Number(value),
+        currency,
+        status,
+        follow_up_date || null,
+        notes || null,
+        user.id,
+      ],
+    });
+
+    await turso.execute({
+      sql: `
+        UPDATE leads SET 
+          status = 'PROPOSAL', 
+          last_activity_at = CURRENT_TIMESTAMP,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `,
+      args: [leadId],
+    });
+
+    try {
+      await turso.execute({
+        sql: `
+          INSERT INTO lead_activities (lead_id, user_id, activity_type, title, description, created_at)
+          VALUES (?, ?, 'PROPOSAL_SENT', ?, ?, CURRENT_TIMESTAMP)
+        `,
+        args: [
+          leadId,
+          user.id,
+          `Proposal Sent: ${proposalCode}`,
+          `Service: ${service_name} | Value: ₹${Number(value).toLocaleString('en-IN')}`,
+        ],
+      });
+    } catch (_) {}
+
+    res.status(201).json({
+      message: 'Proposal created successfully',
+      proposal_id: pRes.rows[0]?.id,
+      proposal_code: proposalCode,
+    });
+  } catch (error: any) {
+    console.error('Create proposal error:', error);
+    res.status(500).json({ error: error.message || 'Failed to create proposal' });
+  }
+});
+
+// Deals List
+app.get(['/api/sales/deals', '/sales/deals'], authenticateToken, async (req: any, res) => {
+  try {
+    const user = req.user;
+    const { business_id, consultant_id, payment_status } = req.query;
+
+    const conditions: string[] = [];
+    const params: any[] = [];
+
+    if (user.role === 'CONSULTANT') {
+      conditions.push('deals.original_consultant_id = ?');
+      params.push(user.id);
+    } else if (consultant_id) {
+      conditions.push('deals.original_consultant_id = ?');
+      params.push(Number(consultant_id));
+    }
+
+    if (business_id) {
+      conditions.push('deals.internal_business_id = ?');
+      params.push(Number(business_id));
+    }
+
+    if (payment_status) {
+      conditions.push('deals.payment_status = ?');
+      params.push(payment_status);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const sql = `
+      SELECT 
+        deals.*,
+        leads.lead_id as lead_code,
+        leads.company_name,
+        leads.contact_person,
+        leads.mobile,
+        leads.email,
+        leads.batch_id,
+        businesses.name as business_name,
+        sources.name as source_name,
+        orig_consultant.name as original_consultant_name,
+        closer.name as closing_person_name
+      FROM deals
+      JOIN leads ON leads.id = deals.lead_id
+      JOIN businesses ON businesses.id = deals.internal_business_id
+      LEFT JOIN lead_sources as sources ON sources.id = deals.source_id
+      JOIN users as orig_consultant ON orig_consultant.id = deals.original_consultant_id
+      JOIN users as closer ON closer.id = deals.closing_person_id
+      ${whereClause}
+      ORDER BY deals.closing_date DESC, deals.created_at DESC
+    `;
+
+    const result = await turso.execute({ sql, args: params });
+    const totalsRes = await turso.execute(`
+      SELECT 
+        COALESCE(SUM(deal_value), 0) as total_deal_value,
+        COALESCE(SUM(revenue), 0) as total_revenue,
+        COUNT(*) as total_deals
+      FROM deals
+    `);
+
+    res.json({ deals: result.rows, totals: totalsRes.rows[0] });
+  } catch (error: any) {
+    console.error('Fetch deals error:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch deals' });
+  }
+});
+
+// Close Deal Won & Revenue Attribution
+app.post(['/api/sales/deals/close-won', '/sales/deals/close-won', '/api/sales/close-won', '/sales/close-won'], authenticateToken, async (req: any, res) => {
+  try {
+    const user = req.user;
+    if (user.role !== 'SUPER_ADMIN') {
+      return res.status(403).json({ error: 'Super Admin access required to close won deals' });
+    }
+
+    const {
+      lead_id,
+      proposal_id,
+      service_name,
+      internal_business_id,
+      deal_value,
+      payment_type = 'ONE_TIME',
+      closing_date,
+      payment_status = 'PAID',
+      revenue,
+      notes,
+    } = req.body;
+
+    if (!lead_id || !service_name || !internal_business_id || deal_value === undefined) {
+      return res.status(400).json({ error: 'lead_id, service_name, internal_business_id, and deal_value are required' });
+    }
+
+    const leadId = Number(lead_id);
+    const leadRes = await turso.execute({
+      sql: 'SELECT * FROM leads WHERE id = ?',
+      args: [leadId],
+    });
+    const lead: any = leadRes.rows[0];
+    if (!lead) return res.status(404).json({ error: 'Lead not found' });
+
+    const closeDate = closing_date || new Date().toISOString().split('T')[0];
+    const originalConsultantId = lead.original_consultant_id || lead.assigned_consultant_id || user.id;
+    const finalRevenue = revenue !== undefined ? Number(revenue) : Number(deal_value);
+
+    const dRes = await turso.execute({
+      sql: `
+        INSERT INTO deals (
+          lead_id, proposal_id, service_name, internal_business_id, source_id,
+          original_consultant_id, closing_person_id, deal_value, payment_type,
+          closing_date, payment_status, revenue, notes
+        ) VALUES (
+          ?, ?, ?, ?, ?,
+          ?, ?, ?, ?,
+          ?, ?, ?, ?
+        )
+        RETURNING id
+      `,
+      args: [
+        leadId,
+        proposal_id ? Number(proposal_id) : null,
+        service_name,
+        Number(internal_business_id),
+        lead.source_id || 1,
+        originalConsultantId,
+        user.id,
+        Number(deal_value),
+        payment_type,
+        closeDate,
+        payment_status,
+        finalRevenue,
+        notes || null,
+      ],
+    });
+
+    await turso.execute({
+      sql: `
+        UPDATE leads SET 
+          status = 'WON', 
+          internal_business_id = ?,
+          lead_score = 100,
+          lead_score_band = 'HOT',
+          last_activity_at = CURRENT_TIMESTAMP,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `,
+      args: [Number(internal_business_id), leadId],
+    });
+
+    if (proposal_id) {
+      try {
+        await turso.execute({
+          sql: "UPDATE proposals SET status = 'ACCEPTED', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+          args: [Number(proposal_id)],
+        });
+      } catch (_) {}
+    }
+
+    try {
+      await turso.execute({
+        sql: `
+          INSERT INTO lead_activities (lead_id, user_id, activity_type, title, description, created_at)
+          VALUES (?, ?, 'WON', '🎉 Deal Closed Won!', ?, CURRENT_TIMESTAMP)
+        `,
+        args: [
+          leadId,
+          user.id,
+          `Deal closed by ${user.name} for service "${service_name}" (Value: ₹${Number(deal_value).toLocaleString('en-IN')}). Attribution: Original Consultant #${originalConsultantId}`,
+        ],
+      });
+    } catch (_) {}
+
+    if (originalConsultantId) {
+      try {
+        await turso.execute({
+          sql: `
+            INSERT INTO notifications (user_id, title, message, type, link_url, created_at)
+            VALUES (?, '🎉 Deal Closed Won!', ?, 'WON', '/consultant/leads', CURRENT_TIMESTAMP)
+          `,
+          args: [
+            originalConsultantId,
+            `Congratulations! Lead "${lead.company_name}" originated by you has been closed as WON!`,
+          ],
+        });
+      } catch (_) {}
+    }
+
+    res.status(201).json({
+      message: 'Deal closed won and revenue attributed successfully!',
+      deal_id: dRes.rows[0]?.id,
+      revenue: finalRevenue,
+    });
+  } catch (error: any) {
+    console.error('Close deal error:', error);
+    res.status(500).json({ error: error.message || 'Failed to close deal' });
+  }
+});
+
+// Mark Lead as Lost
+app.post(['/api/sales/deals/mark-lost', '/sales/deals/mark-lost', '/api/sales/lost', '/sales/lost'], authenticateToken, async (req: any, res) => {
+  try {
+    const user = req.user;
+    const { lead_id, reason, notes, competitor_name } = req.body;
+
+    if (!lead_id || !reason) {
+      return res.status(400).json({ error: 'lead_id and reason are required' });
+    }
+
+    const leadId = Number(lead_id);
+    await turso.execute({
+      sql: `
+        INSERT INTO lost_records (lead_id, reason, notes, competitor_name, created_by_id)
+        VALUES (?, ?, ?, ?, ?)
+      `,
+      args: [leadId, reason, notes || null, competitor_name || null, user.id],
+    });
+
+    await turso.execute({
+      sql: `
+        UPDATE leads SET 
+          status = 'LOST',
+          last_activity_at = CURRENT_TIMESTAMP,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `,
+      args: [leadId],
+    });
+
+    try {
+      await turso.execute({
+        sql: `
+          INSERT INTO lead_activities (lead_id, user_id, activity_type, title, description, created_at)
+          VALUES (?, ?, 'LOST', 'Lead Marked as Lost', ?, CURRENT_TIMESTAMP)
+        `,
+        args: [
+          leadId,
+          user.id,
+          `Reason: ${reason} | Notes: ${notes || 'No extra notes'}`,
+        ],
+      });
+    } catch (_) {}
+
+    res.json({ message: 'Lead marked as lost', lead_status: 'LOST' });
+  } catch (error: any) {
+    console.error('Mark lost error:', error);
+    res.status(500).json({ error: error.message || 'Failed to record lost lead' });
+  }
+});
+
+// Move Lead to Nurture Queue
+app.post(['/api/sales/deals/nurture', '/sales/deals/nurture', '/api/sales/nurture', '/sales/nurture'], authenticateToken, async (req: any, res) => {
+  try {
+    const user = req.user;
+    const { lead_id, future_followup_date, reason, notes } = req.body;
+
+    if (!lead_id || !future_followup_date) {
+      return res.status(400).json({ error: 'lead_id and future_followup_date are required' });
+    }
+
+    const leadId = Number(lead_id);
+    await turso.execute({
+      sql: `
+        INSERT INTO nurture_records (lead_id, future_followup_date, reason, notes, created_by_id)
+        VALUES (?, ?, ?, ?, ?)
+      `,
+      args: [leadId, future_followup_date, reason || 'Long-term nurture', notes || null, user.id],
+    });
+
+    await turso.execute({
+      sql: `
+        UPDATE leads SET 
+          status = 'NURTURE',
+          next_followup_date = ?,
+          next_followup_time = '10:00',
+          last_activity_at = CURRENT_TIMESTAMP,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `,
+      args: [future_followup_date, leadId],
+    });
+
+    try {
+      await turso.execute({
+        sql: `
+          INSERT INTO lead_activities (lead_id, user_id, activity_type, title, description, created_at)
+          VALUES (?, ?, 'STATUS_CHANGE', 'Moved to Nurture Queue', ?, CURRENT_TIMESTAMP)
+        `,
+        args: [
+          leadId,
+          user.id,
+          `Scheduled for future outreach on ${future_followup_date}. Reason: ${reason || 'Nurture'}`,
+        ],
+      });
+    } catch (_) {}
+
+    res.json({ message: 'Lead moved to nurture queue', next_followup_date: future_followup_date });
+  } catch (error: any) {
+    console.error('Move to nurture error:', error);
+    res.status(500).json({ error: error.message || 'Failed to move to nurture' });
+  }
+});
+
+// Unassign Lead(s) (Consultant, Business, or Both)
+app.post(['/api/leads/unassign', '/leads/unassign'], authenticateToken, async (req: any, res) => {
+  try {
+    const user = req.user;
+    const { lead_ids, unassign_consultant = true, unassign_business = true } = req.body;
     if (!Array.isArray(lead_ids) || lead_ids.length === 0) {
       return res.status(400).json({ error: 'lead_ids array required' });
     }
+
     const placeholders = lead_ids.map(() => '?').join(',');
-    await turso.execute({
-      sql: `UPDATE leads SET assigned_consultant_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN (${placeholders})`,
-      args: [consultant_id ? Number(consultant_id) : null, ...lead_ids],
+    
+    // Fetch current assignments for activity logging
+    const currentLeadsRes = await turso.execute({
+      sql: `
+        SELECT leads.id, leads.company_name, leads.assigned_consultant_id, leads.internal_business_id,
+               users.name as consultant_name, businesses.name as business_name
+        FROM leads
+        LEFT JOIN users ON users.id = leads.assigned_consultant_id
+        LEFT JOIN businesses ON businesses.id = leads.internal_business_id
+        WHERE leads.id IN (${placeholders})
+      `,
+      args: [...lead_ids],
     });
+
+    const setClauses: string[] = ['updated_at = CURRENT_TIMESTAMP'];
+    if (unassign_consultant) {
+      setClauses.push('assigned_consultant_id = NULL');
+      setClauses.push("status = CASE WHEN status = 'ASSIGNED' THEN 'NEW' ELSE status END");
+    }
+    if (unassign_business) {
+      setClauses.push('internal_business_id = NULL');
+    }
+
+    await turso.execute({
+      sql: `UPDATE leads SET ${setClauses.join(', ')} WHERE id IN (${placeholders})`,
+      args: [...lead_ids],
+    });
+
+    // Log activities for each lead
+    for (const lead of currentLeadsRes.rows) {
+      const logs: string[] = [];
+      if (unassign_consultant && lead.assigned_consultant_id) {
+        logs.push(`Unassigned from consultant "${lead.consultant_name || 'Consultant'}"`);
+      }
+      if (unassign_business && lead.internal_business_id) {
+        logs.push(`Unassigned from business category "${lead.business_name || 'Business'}"`);
+      }
+      if (logs.length > 0) {
+        try {
+          await turso.execute({
+            sql: `
+              INSERT INTO lead_activities (lead_id, user_id, activity_type, title, description)
+              VALUES (?, ?, 'UNASSIGNED', 'Lead Unassigned', ?)
+            `,
+            args: [lead.id, user.id, `${logs.join(' & ')} by ${user.name || 'Admin'} for reassignment.`],
+          });
+        } catch (e) {}
+      }
+    }
+
+    res.json({
+      message: `Successfully unassigned ${lead_ids.length} leads. They can now be reassigned.`,
+      affected: lead_ids.length,
+    });
+  } catch (err: any) {
+    console.error('Unassign error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Bulk operations & Single Lead Updates with Reassignment Protection
+app.post(['/api/leads/assign', '/leads/assign'], authenticateToken, async (req: any, res) => {
+  try {
+    const user = req.user;
+    const { lead_ids, consultant_id, force = false } = req.body;
+    if (!Array.isArray(lead_ids) || lead_ids.length === 0) {
+      return res.status(400).json({ error: 'lead_ids array required' });
+    }
+
+    const placeholders = lead_ids.map(() => '?').join(',');
+    const targetConsultantId = consultant_id ? Number(consultant_id) : null;
+
+    // Check if any leads are already assigned to a DIFFERENT consultant
+    if (targetConsultantId && !force) {
+      const existingRes = await turso.execute({
+        sql: `
+          SELECT leads.id, leads.company_name, leads.assigned_consultant_id, users.name as consultant_name
+          FROM leads
+          LEFT JOIN users ON users.id = leads.assigned_consultant_id
+          WHERE leads.id IN (${placeholders}) AND leads.assigned_consultant_id IS NOT NULL AND leads.assigned_consultant_id != ?
+        `,
+        args: [...lead_ids, targetConsultantId],
+      });
+
+      if (existingRes.rows.length > 0) {
+        const first = existingRes.rows[0];
+        return res.status(409).json({
+          error: 'REASSIGNMENT_LOCKED',
+          message: `Lead "${first.company_name}" is already assigned to ${first.consultant_name}. You must unassign it first before reassigning.`,
+          assigned_leads: existingRes.rows,
+        });
+      }
+    }
+
+    await turso.execute({
+      sql: `
+        UPDATE leads 
+        SET assigned_consultant_id = ?, 
+            status = CASE WHEN status = 'NEW' AND ? IS NOT NULL THEN 'ASSIGNED' ELSE status END,
+            updated_at = CURRENT_TIMESTAMP 
+        WHERE id IN (${placeholders})
+      `,
+      args: [targetConsultantId, targetConsultantId, ...lead_ids],
+    });
+
+    if (targetConsultantId) {
+      const consultantUserRes = await turso.execute({
+        sql: 'SELECT name FROM users WHERE id = ?',
+        args: [targetConsultantId],
+      });
+      const cName = consultantUserRes.rows[0]?.name || 'Consultant';
+      for (const id of lead_ids) {
+        try {
+          await turso.execute({
+            sql: `
+              INSERT INTO lead_activities (lead_id, user_id, activity_type, title, description)
+              VALUES (?, ?, 'ASSIGNED', 'Lead Assigned', ?)
+            `,
+            args: [id, user.id, `Assigned to ${cName} by ${user.name || 'Admin'}.`],
+          });
+        } catch (e) {}
+      }
+    }
+
     res.json({ message: `Successfully assigned ${lead_ids.length} leads` });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -1207,17 +2084,63 @@ app.post(['/api/leads/bulk-priority', '/leads/bulk-priority'], authenticateToken
   }
 });
 
-app.post(['/api/leads/bulk-business', '/leads/bulk-business'], authenticateToken, async (req, res) => {
+app.post(['/api/leads/bulk-business', '/leads/bulk-business'], authenticateToken, async (req: any, res) => {
   try {
-    const { lead_ids, business_id } = req.body;
+    const user = req.user;
+    const { lead_ids, business_id, force = false } = req.body;
     if (!Array.isArray(lead_ids) || lead_ids.length === 0) {
       return res.status(400).json({ error: 'lead_ids array required' });
     }
+
     const placeholders = lead_ids.map(() => '?').join(',');
+    const targetBusinessId = business_id ? Number(business_id) : null;
+
+    // Check if any leads are already mapped to a DIFFERENT business vertical
+    if (targetBusinessId && !force) {
+      const existingRes = await turso.execute({
+        sql: `
+          SELECT leads.id, leads.company_name, leads.internal_business_id, businesses.name as business_name
+          FROM leads
+          LEFT JOIN businesses ON businesses.id = leads.internal_business_id
+          WHERE leads.id IN (${placeholders}) AND leads.internal_business_id IS NOT NULL AND leads.internal_business_id != ?
+        `,
+        args: [...lead_ids, targetBusinessId],
+      });
+
+      if (existingRes.rows.length > 0) {
+        const first = existingRes.rows[0];
+        return res.status(409).json({
+          error: 'REASSIGNMENT_LOCKED',
+          message: `Lead "${first.company_name}" is already mapped to business vertical "${first.business_name}". You must unassign it first before reassigning.`,
+          assigned_leads: existingRes.rows,
+        });
+      }
+    }
+
     await turso.execute({
       sql: `UPDATE leads SET internal_business_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN (${placeholders})`,
-      args: [business_id ? Number(business_id) : null, ...lead_ids],
+      args: [targetBusinessId, ...lead_ids],
     });
+
+    if (targetBusinessId) {
+      const bizRes = await turso.execute({
+        sql: 'SELECT name FROM businesses WHERE id = ?',
+        args: [targetBusinessId],
+      });
+      const bName = bizRes.rows[0]?.name || 'Business Vertical';
+      for (const id of lead_ids) {
+        try {
+          await turso.execute({
+            sql: `
+              INSERT INTO lead_activities (lead_id, user_id, activity_type, title, description)
+              VALUES (?, ?, 'BUSINESS_MAPPED', 'Business Category Mapped', ?)
+            `,
+            args: [id, user.id, `Mapped to ${bName} by ${user.name || 'Admin'}.`],
+          });
+        } catch (e) {}
+      }
+    }
+
     res.json({ message: `Successfully mapped ${lead_ids.length} leads to business vertical` });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -1564,9 +2487,13 @@ app.get([
       }),
       turso.execute({
         sql: `
-          SELECT follow_ups.*, leads.company_name, leads.contact_person, leads.mobile
+          SELECT follow_ups.*, leads.company_name, leads.contact_person, leads.mobile,
+                 businesses.name as business_name, businesses.name as internal_business_name,
+                 users.name as assigned_consultant_name, users.name as consultant_name
           FROM follow_ups
           JOIN leads ON leads.id = follow_ups.lead_id
+          LEFT JOIN businesses ON businesses.id = leads.internal_business_id
+          LEFT JOIN users ON users.id = follow_ups.consultant_id
           WHERE follow_ups.consultant_id = ? AND follow_ups.status = 'PENDING' AND follow_ups.followup_date < '${todayStr}'
           ORDER BY follow_ups.followup_date ASC
         `,
@@ -1574,9 +2501,13 @@ app.get([
       }),
       turso.execute({
         sql: `
-          SELECT follow_ups.*, leads.company_name, leads.contact_person, leads.mobile
+          SELECT follow_ups.*, leads.company_name, leads.contact_person, leads.mobile,
+                 businesses.name as business_name, businesses.name as internal_business_name,
+                 users.name as assigned_consultant_name, users.name as consultant_name
           FROM follow_ups
           JOIN leads ON leads.id = follow_ups.lead_id
+          LEFT JOIN businesses ON businesses.id = leads.internal_business_id
+          LEFT JOIN users ON users.id = follow_ups.consultant_id
           WHERE follow_ups.consultant_id = ? AND follow_ups.status = 'PENDING' AND follow_ups.followup_date = '${todayStr}'
           ORDER BY follow_ups.followup_time ASC
         `,
@@ -1584,8 +2515,12 @@ app.get([
       }),
       turso.execute({
         sql: `
-          SELECT leads.*
+          SELECT leads.*,
+                 businesses.name as business_name, businesses.name as internal_business_name,
+                 users.name as assigned_consultant_name
           FROM leads
+          LEFT JOIN businesses ON businesses.id = leads.internal_business_id
+          LEFT JOIN users ON users.id = leads.assigned_consultant_id
           WHERE leads.assigned_consultant_id = ? AND leads.status IN ('NEW', 'ASSIGNED')
           ORDER BY leads.id DESC
           LIMIT 20

@@ -191,12 +191,14 @@ leadsRouter.get('/', authMiddleware, (req: AuthRequest, res) => {
         sources.code as source_code,
         assigned_user.name as assigned_consultant_name,
         assigned_user.email as assigned_consultant_email,
-        ${user.role === 'SUPER_ADMIN' ? 'businesses.name as business_name, businesses.code as business_code,' : ''}
+        businesses.name as business_name,
+        businesses.name as internal_business_name,
+        businesses.code as business_code,
         (SELECT GROUP_CONCAT(tags.name || '::' || tags.color) FROM lead_tags JOIN tags ON tags.id = lead_tags.tag_id WHERE lead_tags.lead_id = leads.id) as tags_concat
       FROM leads
       LEFT JOIN lead_sources as sources ON sources.id = leads.source_id
       LEFT JOIN users as assigned_user ON assigned_user.id = leads.assigned_consultant_id
-      ${user.role === 'SUPER_ADMIN' ? 'LEFT JOIN businesses ON businesses.id = leads.internal_business_id' : ''}
+      LEFT JOIN businesses ON businesses.id = leads.internal_business_id
       ${whereClause}
       ORDER BY ${orderCol} ${orderDirection}
       LIMIT ? OFFSET ?
@@ -247,13 +249,15 @@ leadsRouter.get('/:id', authMiddleware, (req: AuthRequest, res) => {
         assigned_user.email as assigned_consultant_email,
         assigned_user.mobile as assigned_consultant_mobile,
         orig_user.name as original_consultant_name,
-        ${user.role === 'SUPER_ADMIN' ? 'businesses.name as business_name, businesses.code as business_code,' : ''}
+        businesses.name as business_name,
+        businesses.name as internal_business_name,
+        businesses.code as business_code,
         (SELECT json_group_array(json_object('id', tags.id, 'name', tags.name, 'color', tags.color)) FROM lead_tags JOIN tags ON tags.id = lead_tags.tag_id WHERE lead_tags.lead_id = leads.id) as tags_json
       FROM leads
       LEFT JOIN lead_sources as sources ON sources.id = leads.source_id
       LEFT JOIN users as assigned_user ON assigned_user.id = leads.assigned_consultant_id
       LEFT JOIN users as orig_user ON orig_user.id = leads.original_consultant_id
-      ${user.role === 'SUPER_ADMIN' ? 'LEFT JOIN businesses ON businesses.id = leads.internal_business_id' : ''}
+      LEFT JOIN businesses ON businesses.id = leads.internal_business_id
       WHERE leads.id = ?
     `;
 
@@ -648,10 +652,74 @@ leadsRouter.patch('/:id/status', authMiddleware, (req: AuthRequest, res) => {
   }
 });
 
+// Unassign Lead(s) (Consultant, Business, or Both)
+const handleUnassign = (req: AuthRequest, res: any) => {
+  try {
+    const user = req.user!;
+    const { lead_ids, unassign_consultant = true, unassign_business = true } = req.body;
+    if (!Array.isArray(lead_ids) || lead_ids.length === 0) {
+      return res.status(400).json({ error: 'lead_ids array is required' });
+    }
+
+    const setClauses: string[] = ['updated_at = CURRENT_TIMESTAMP'];
+    if (unassign_consultant) {
+      setClauses.push('assigned_consultant_id = NULL');
+      setClauses.push("status = CASE WHEN status = 'ASSIGNED' THEN 'NEW' ELSE status END");
+    }
+    if (unassign_business) {
+      setClauses.push('internal_business_id = NULL');
+    }
+
+    const updateStmt = db.prepare(`UPDATE leads SET ${setClauses.join(', ')} WHERE id = ?`);
+    const findStmt = db.prepare(`
+      SELECT leads.id, leads.company_name, leads.assigned_consultant_id, leads.internal_business_id,
+             users.name as consultant_name, businesses.name as business_name
+      FROM leads
+      LEFT JOIN users ON users.id = leads.assigned_consultant_id
+      LEFT JOIN businesses ON businesses.id = leads.internal_business_id
+      WHERE leads.id = ?
+    `);
+    const activityStmt = db.prepare(`
+      INSERT INTO lead_activities (lead_id, user_id, activity_type, title, description)
+      VALUES (?, ?, 'UNASSIGNED', 'Lead Unassigned', ?)
+    `);
+
+    let affected = 0;
+    for (const id of lead_ids) {
+      const lead = findStmt.get(Number(id)) as any;
+      if (!lead) continue;
+      updateStmt.run(Number(id));
+      affected++;
+
+      const logs: string[] = [];
+      if (unassign_consultant && lead.assigned_consultant_id) {
+        logs.push(`Unassigned from consultant "${lead.consultant_name || 'Consultant'}"`);
+      }
+      if (unassign_business && lead.internal_business_id) {
+        logs.push(`Unassigned from business category "${lead.business_name || 'Business'}"`);
+      }
+      if (logs.length > 0) {
+        try {
+          activityStmt.run(Number(id), user.id, `${logs.join(' & ')} by ${user.name || 'Admin'} for reassignment.`);
+        } catch (e) {}
+      }
+    }
+
+    logAudit(req, 'UNASSIGN_LEADS', 'leads', null, null, { count: affected, unassign_consultant, unassign_business });
+    return res.json({ message: `Successfully unassigned ${affected} leads. They can now be reassigned.`, affected });
+  } catch (error: any) {
+    console.error('Unassign error:', error);
+    return res.status(500).json({ error: 'Failed to unassign leads' });
+  }
+};
+
+leadsRouter.post('/unassign', requireAdmin, handleUnassign);
+leadsRouter.post('/bulk/unassign', requireAdmin, handleUnassign);
+
 // 6. Bulk Lead Actions (Admin Only / Filtered Support)
 const handleBulkAssign = (req: AuthRequest, res: any) => {
   try {
-    const { lead_ids, consultant_id } = req.body;
+    const { lead_ids, consultant_id, force = false } = req.body;
     if (!Array.isArray(lead_ids) || lead_ids.length === 0) {
       return res.status(400).json({ error: 'lead_ids array is required' });
     }
@@ -659,6 +727,25 @@ const handleBulkAssign = (req: AuthRequest, res: any) => {
     const consultantId = consultant_id ? Number(consultant_id) : null;
     const consultantUser = consultantId ? db.prepare('SELECT name FROM users WHERE id = ?').get(consultantId) as any : null;
     const consultantName = consultantUser ? consultantUser.name : 'Unassigned';
+
+    // Guard: Prevent direct reassignment if already assigned to a DIFFERENT consultant
+    if (consultantId && !force) {
+      const checkAssignedStmt = db.prepare(`
+        SELECT leads.id, leads.company_name, leads.assigned_consultant_id, users.name as consultant_name
+        FROM leads
+        LEFT JOIN users ON users.id = leads.assigned_consultant_id
+        WHERE leads.id = ? AND leads.assigned_consultant_id IS NOT NULL AND leads.assigned_consultant_id != ?
+      `);
+      for (const id of lead_ids) {
+        const conflict = checkAssignedStmt.get(Number(id), consultantId) as any;
+        if (conflict) {
+          return res.status(409).json({
+            error: 'REASSIGNMENT_LOCKED',
+            message: `Lead "${conflict.company_name}" is already assigned to ${conflict.consultant_name}. You must unassign it first before reassigning.`,
+          });
+        }
+      }
+    }
 
     const updateStmt = db.prepare(`
       UPDATE leads SET 
@@ -813,17 +900,48 @@ leadsRouter.post('/bulk-tags', authMiddleware, handleBulkTags);
 // Bulk Internal Business Mapping (ADMIN ONLY)
 const handleBulkBusiness = (req: AuthRequest, res: any) => {
   try {
-    const { lead_ids, business_id } = req.body;
+    const { lead_ids, business_id, force = false } = req.body;
     if (!Array.isArray(lead_ids) || lead_ids.length === 0 || !business_id) {
       return res.status(400).json({ error: 'lead_ids array and business_id are required' });
     }
 
-    const updateStmt = db.prepare('UPDATE leads SET internal_business_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?');
-    for (const id of lead_ids) {
-      updateStmt.run(Number(business_id), Number(id));
+    const businessId = Number(business_id);
+
+    // Guard: Prevent direct reassignment if already mapped to a DIFFERENT business vertical
+    if (businessId && !force) {
+      const checkBusinessStmt = db.prepare(`
+        SELECT leads.id, leads.company_name, leads.internal_business_id, businesses.name as business_name
+        FROM leads
+        LEFT JOIN businesses ON businesses.id = leads.internal_business_id
+        WHERE leads.id = ? AND leads.internal_business_id IS NOT NULL AND leads.internal_business_id != ?
+      `);
+      for (const id of lead_ids) {
+        const conflict = checkBusinessStmt.get(Number(id), businessId) as any;
+        if (conflict) {
+          return res.status(409).json({
+            error: 'REASSIGNMENT_LOCKED',
+            message: `Lead "${conflict.company_name}" is already mapped to business vertical "${conflict.business_name}". You must unassign it first before reassigning.`,
+          });
+        }
+      }
     }
 
-    logAudit(req, 'BULK_BUSINESS_MAPPING', 'leads', null, null, { count: lead_ids.length, business_id });
+    const updateStmt = db.prepare('UPDATE leads SET internal_business_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?');
+    const bizRow = db.prepare('SELECT name FROM businesses WHERE id = ?').get(businessId) as any;
+    const bizName = bizRow ? bizRow.name : 'Business Vertical';
+    const activityStmt = db.prepare(`
+      INSERT INTO lead_activities (lead_id, user_id, activity_type, title, description)
+      VALUES (?, ?, 'BUSINESS_MAPPED', 'Business Category Mapped', ?)
+    `);
+
+    for (const id of lead_ids) {
+      updateStmt.run(businessId, Number(id));
+      try {
+        activityStmt.run(Number(id), req.user?.id || null, `Mapped to ${bizName} by ${req.user?.name || 'Admin'}.`);
+      } catch (e) {}
+    }
+
+    logAudit(req, 'BULK_BUSINESS_MAPPING', 'leads', null, null, { count: lead_ids.length, business_id: businessId });
 
     return res.json({ message: `Mapped ${lead_ids.length} leads to internal business` });
   } catch (error: any) {

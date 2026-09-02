@@ -230,6 +230,8 @@ export interface FollowUp {
   consultant_id: number;
   consultant_name?: string;
   consultant_email?: string;
+  business_name?: string;
+  internal_business_id?: number;
   followup_date: string;
   followup_time: string;
   priority: Priority;

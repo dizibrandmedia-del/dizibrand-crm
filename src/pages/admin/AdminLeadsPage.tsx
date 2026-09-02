@@ -442,6 +442,7 @@ export const AdminLeadsPage: React.FC = () => {
         isOpen={isBulkModalOpen}
         onClose={() => setIsBulkModalOpen(false)}
         selectedIds={selectedIds}
+        leads={leads}
         consultants={consultants}
         businesses={businesses}
         tags={tags}

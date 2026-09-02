@@ -149,15 +149,27 @@ export const api = {
         method: 'PATCH',
         body: JSON.stringify({ status, priority, remark }),
       }),
-    assign: (lead_ids: number[], consultant_id: number) =>
+    assign: (lead_ids: number[], consultant_id: number | null, force: boolean = false) =>
       request<{ message: string }>('/leads/assign', {
         method: 'POST',
-        body: JSON.stringify({ lead_ids, consultant_id }),
+        body: JSON.stringify({ lead_ids, consultant_id, force }),
       }),
-    bulkAssign: (lead_ids: number[], consultant_id: number) =>
+    bulkAssign: (lead_ids: number[], consultant_id: number | null, force: boolean = false) =>
       request<{ message: string }>('/leads/assign', {
         method: 'POST',
-        body: JSON.stringify({ lead_ids, consultant_id }),
+        body: JSON.stringify({ lead_ids, consultant_id, force }),
+      }),
+    unassign: (
+      lead_ids: number[],
+      options?: { unassign_consultant?: boolean; unassign_business?: boolean }
+    ) =>
+      request<{ message: string; affected: number }>('/leads/unassign', {
+        method: 'POST',
+        body: JSON.stringify({
+          lead_ids,
+          unassign_consultant: options?.unassign_consultant ?? true,
+          unassign_business: options?.unassign_business ?? true,
+        }),
       }),
     bulkStatus: (lead_ids: number[], status: string, remark?: string) =>
       request<{ message: string }>('/leads/bulk-status', {
@@ -174,10 +186,10 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ lead_ids, tag_ids }),
       }),
-    bulkBusiness: (lead_ids: number[], business_id: number) =>
+    bulkBusiness: (lead_ids: number[], business_id: number, force: boolean = false) =>
       request<{ message: string }>('/leads/bulk-business', {
         method: 'POST',
-        body: JSON.stringify({ lead_ids, business_id }),
+        body: JSON.stringify({ lead_ids, business_id, force }),
       }),
     delete: (id: number) =>
       request<{ message: string }>(`/leads/${id}`, {

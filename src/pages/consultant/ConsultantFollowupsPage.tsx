@@ -196,6 +196,8 @@ export const ConsultantFollowupsPage: React.FC = () => {
                         country: 'India',
                         created_at: f.created_at,
                         updated_at: f.created_at,
+                        business_name: f.business_name,
+                        assigned_consultant_name: f.consultant_name,
                       });
                       setModalType('whatsapp');
                     }}

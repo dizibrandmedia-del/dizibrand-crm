@@ -267,6 +267,8 @@ export const AdminPotentialLeadsPage: React.FC = () => {
                         country: 'India',
                         created_at: p.created_at,
                         updated_at: p.updated_at,
+                        business_name: p.business_name,
+                        assigned_consultant_name: p.consultant_name,
                       });
                       setModalType('whatsapp');
                     }}

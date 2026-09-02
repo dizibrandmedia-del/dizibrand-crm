@@ -51,6 +51,7 @@ followupsRouter.get('/', authMiddleware, (req: AuthRequest, res) => {
       SELECT 
         follow_ups.*,
         leads.lead_id,
+        leads.lead_id as lead_code,
         leads.company_name,
         leads.contact_person,
         leads.mobile,
@@ -59,7 +60,11 @@ followupsRouter.get('/', authMiddleware, (req: AuthRequest, res) => {
         leads.status as lead_status,
         leads.lead_score,
         leads.priority as lead_priority,
+        leads.internal_business_id,
+        businesses.name as business_name,
+        businesses.name as internal_business_name,
         consultant.name as consultant_name,
+        consultant.name as assigned_consultant_name,
         consultant.email as consultant_email,
         CASE 
           WHEN follow_ups.followup_date < '${todayStr}' AND follow_ups.status = 'PENDING' THEN 1 
@@ -68,6 +73,7 @@ followupsRouter.get('/', authMiddleware, (req: AuthRequest, res) => {
       FROM follow_ups
       JOIN leads ON leads.id = follow_ups.lead_id
       JOIN users as consultant ON consultant.id = follow_ups.consultant_id
+      LEFT JOIN businesses ON businesses.id = leads.internal_business_id
       ${whereClause}
       ORDER BY 
         is_overdue DESC,

@@ -77,8 +77,8 @@ export async function pullFromTurso(localDb: DatabaseSync) {
       console.log(`✅ Pulled ${leadRes.rows.length} leads from Turso Cloud`);
     }
 
-    // 5. Sync Deals, Calls, Followups
-    for (const table of ['deals', 'calls', 'follow_ups', 'whatsapp_activities', 'lead_activities']) {
+    // 5. Sync Deals, Calls, Followups, Potential Handovers, Tasks, Meetings, Proposals
+    for (const table of ['deals', 'calls', 'follow_ups', 'whatsapp_activities', 'lead_activities', 'potential_handovers', 'tasks', 'meetings', 'proposals']) {
       try {
         const res = await turso.execute(`SELECT * FROM ${table}`);
         if (res.rows && res.rows.length > 0) {
