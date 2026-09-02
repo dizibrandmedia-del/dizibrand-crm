@@ -839,6 +839,252 @@ app.post(['/api/potential-leads/handover', '/potential-leads/handover'], authent
   }
 });
 
+// Tasks & Quotas Management Endpoints
+app.get(['/api/tasks', '/tasks'], authenticateToken, async (req: any, res) => {
+  try {
+    const user = req.user;
+    const { status, consultant_id } = req.query;
+
+    const conditions: string[] = [];
+    const params: any[] = [];
+
+    if (user.role === 'CONSULTANT') {
+      conditions.push('tasks.consultant_id = ?');
+      params.push(user.id);
+    } else if (consultant_id) {
+      conditions.push('tasks.consultant_id = ?');
+      params.push(Number(consultant_id));
+    }
+
+    if (status) {
+      conditions.push('tasks.status = ?');
+      params.push(status);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const sql = `
+      SELECT 
+        tasks.*,
+        consultant.name as consultant_name,
+        consultant.email as consultant_email,
+        creator.name as created_by_name
+      FROM tasks
+      JOIN users as consultant ON consultant.id = tasks.consultant_id
+      LEFT JOIN users as creator ON creator.id = tasks.created_by_id
+      ${whereClause}
+      ORDER BY tasks.due_date ASC, tasks.priority DESC
+    `;
+
+    const result = await turso.execute({ sql, args: params });
+    res.json({ tasks: result.rows });
+  } catch (err: any) {
+    console.error('Fetch tasks error:', err);
+    res.status(500).json({ error: err.message || 'Failed to fetch tasks' });
+  }
+});
+
+app.post(['/api/tasks', '/tasks'], authenticateToken, async (req: any, res) => {
+  try {
+    const user = req.user;
+    const {
+      title,
+      description,
+      consultant_id,
+      priority = 'MEDIUM',
+      start_date,
+      due_date,
+      call_target = 0,
+      whatsapp_target = 0,
+      lead_target = 0,
+      followup_target = 0,
+      potential_target = 0,
+      meeting_target = 0,
+    } = req.body;
+
+    if (!title || !consultant_id || !start_date || !due_date) {
+      return res.status(400).json({ error: 'Title, consultant_id, start_date, and due_date are required' });
+    }
+
+    const consultantId = Number(consultant_id);
+    const consultantCheck = await turso.execute({
+      sql: 'SELECT id, name FROM users WHERE id = ?',
+      args: [consultantId]
+    });
+    if (consultantCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Consultant not found' });
+    }
+
+    const insertRes = await turso.execute({
+      sql: `
+        INSERT INTO tasks (
+          title, description, consultant_id, created_by_id, priority,
+          start_date, due_date, status, call_target, whatsapp_target,
+          lead_target, followup_target, potential_target, meeting_target
+        ) VALUES (
+          ?, ?, ?, ?, ?,
+          ?, ?, 'PENDING', ?, ?,
+          ?, ?, ?, ?
+        )
+        RETURNING id
+      `,
+      args: [
+        title.trim(),
+        description ? description.trim() : null,
+        consultantId,
+        user.id,
+        priority,
+        start_date,
+        due_date,
+        Number(call_target) || 0,
+        Number(whatsapp_target) || 0,
+        Number(lead_target) || 0,
+        Number(followup_target) || 0,
+        Number(potential_target) || 0,
+        Number(meeting_target) || 0,
+      ]
+    });
+
+    const taskId = insertRes.rows[0]?.id;
+
+    if (call_target > 0 || lead_target > 0 || whatsapp_target > 0 || followup_target > 0 || potential_target > 0) {
+      await turso.execute({
+        sql: `
+          UPDATE users SET 
+            daily_call_target = CASE WHEN ? > 0 THEN ? ELSE daily_call_target END,
+            daily_lead_target = CASE WHEN ? > 0 THEN ? ELSE daily_lead_target END,
+            daily_whatsapp_target = CASE WHEN ? > 0 THEN ? ELSE daily_whatsapp_target END,
+            daily_followup_target = CASE WHEN ? > 0 THEN ? ELSE daily_followup_target END,
+            daily_potential_target = CASE WHEN ? > 0 THEN ? ELSE daily_potential_target END,
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `,
+        args: [
+          call_target, call_target,
+          lead_target, lead_target,
+          whatsapp_target, whatsapp_target,
+          followup_target, followup_target,
+          potential_target, potential_target,
+          consultantId
+        ]
+      });
+    }
+
+    try {
+      await turso.execute({
+        sql: `
+          INSERT INTO notifications (user_id, title, message, type, link_url)
+          VALUES (?, 'New Task & Target Assigned', ?, 'TASK_ASSIGNED', '/consultant/tasks')
+        `,
+        args: [
+          consultantId,
+          `Super Admin assigned you task: "${title.trim()}" (Due: ${due_date})`
+        ]
+      });
+    } catch (_) {}
+
+    res.status(201).json({
+      message: 'Task and targets assigned successfully',
+      task_id: taskId,
+    });
+  } catch (err: any) {
+    console.error('Create task error:', err);
+    res.status(500).json({ error: err.message || 'Failed to create task' });
+  }
+});
+
+app.patch(['/api/tasks/:id', '/tasks/:id'], authenticateToken, async (req: any, res) => {
+  try {
+    const user = req.user;
+    const taskId = Number(req.params.id);
+    const existingRes = await turso.execute({
+      sql: 'SELECT * FROM tasks WHERE id = ?',
+      args: [taskId]
+    });
+    const existing = existingRes.rows[0];
+    if (!existing) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
+
+    if (user.role === 'CONSULTANT' && existing.consultant_id !== user.id) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const {
+      status,
+      title,
+      description,
+      priority,
+      start_date,
+      due_date,
+      call_target,
+      whatsapp_target,
+      lead_target,
+      followup_target,
+      potential_target,
+      meeting_target,
+    } = req.body;
+
+    if (user.role === 'CONSULTANT') {
+      if (status && !['IN_PROGRESS', 'COMPLETED'].includes(status)) {
+        return res.status(403).json({ error: 'Consultants can only set task status to IN_PROGRESS or COMPLETED' });
+      }
+      await turso.execute({
+        sql: 'UPDATE tasks SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+        args: [status, taskId]
+      });
+    } else {
+      await turso.execute({
+        sql: `
+          UPDATE tasks SET 
+            title = COALESCE(?, title),
+            description = COALESCE(?, description),
+            priority = COALESCE(?, priority),
+            start_date = COALESCE(?, start_date),
+            due_date = COALESCE(?, due_date),
+            status = COALESCE(?, status),
+            call_target = COALESCE(?, call_target),
+            whatsapp_target = COALESCE(?, whatsapp_target),
+            lead_target = COALESCE(?, lead_target),
+            followup_target = COALESCE(?, followup_target),
+            potential_target = COALESCE(?, potential_target),
+            meeting_target = COALESCE(?, meeting_target),
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `,
+        args: [
+          title || null, description || null, priority || null, start_date || null, due_date || null, status || null,
+          call_target !== undefined ? Number(call_target) : null,
+          whatsapp_target !== undefined ? Number(whatsapp_target) : null,
+          lead_target !== undefined ? Number(lead_target) : null,
+          followup_target !== undefined ? Number(followup_target) : null,
+          potential_target !== undefined ? Number(potential_target) : null,
+          meeting_target !== undefined ? Number(meeting_target) : null,
+          taskId
+        ]
+      });
+    }
+
+    res.json({ message: 'Task updated successfully' });
+  } catch (err: any) {
+    console.error('Update task error:', err);
+    res.status(500).json({ error: err.message || 'Failed to update task' });
+  }
+});
+
+app.delete(['/api/tasks/:id', '/tasks/:id'], authenticateToken, async (req: any, res) => {
+  try {
+    const taskId = Number(req.params.id);
+    await turso.execute({
+      sql: 'DELETE FROM tasks WHERE id = ?',
+      args: [taskId]
+    });
+    res.json({ message: 'Task deleted successfully' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to delete task' });
+  }
+});
+
 // Bulk operations & Single Lead Updates
 app.post(['/api/leads/assign', '/leads/assign'], authenticateToken, async (req, res) => {
   try {

@@ -44,10 +44,13 @@ export const AdminTasksPage: React.FC = () => {
         }),
         api.consultants.list(),
       ]);
-      setTasks(tRes.tasks);
-      setConsultants(cRes.consultants);
-      if (cRes.consultants.length > 0 && !consultantId) {
-        setConsultantId(String(cRes.consultants[0].id));
+      setTasks(tRes.tasks || []);
+      const activeCons = (cRes.consultants || []).filter(
+        (c) => c.role === 'CONSULTANT' || Number(c.is_active) === 1
+      );
+      setConsultants(activeCons);
+      if (activeCons.length > 0 && !consultantId) {
+        setConsultantId(String(activeCons[0].id));
       }
     } catch (err: any) {
       toast.error(err.message || 'Failed to load tasks');
@@ -121,8 +124,13 @@ export const AdminTasksPage: React.FC = () => {
         </div>
 
         <button
-          onClick={() => setIsCreateModalOpen(true)}
-          className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-600/30 transition"
+          onClick={() => {
+            if (consultants.length > 0 && !consultantId) {
+              setConsultantId(String(consultants[0].id));
+            }
+            setIsCreateModalOpen(true);
+          }}
+          className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-600/30 transition cursor-pointer active:scale-95"
         >
           <Plus className="w-4 h-4" />
           Assign Target & Task
@@ -290,11 +298,15 @@ export const AdminTasksPage: React.FC = () => {
               onChange={(e) => setConsultantId(e.target.value)}
               className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 font-semibold text-slate-800"
             >
-              {consultants.filter(c => c.is_active === 1).map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} ({c.email})
-                </option>
-              ))}
+              {consultants.length === 0 ? (
+                <option value="">No active consultants found</option>
+              ) : (
+                consultants.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} ({c.email})
+                  </option>
+                ))
+              )}
             </select>
           </div>
 
