@@ -166,7 +166,7 @@ app.get(['/api/auth/me', '/auth/me'], authenticateToken, async (req: any, res) =
 app.get(['/api/consultants', '/consultants'], authenticateToken, async (req, res) => {
   try {
     const result = await turso.execute(`
-      SELECT id, name, email, role, mobile, is_active,
+      SELECT id, name, email, role, mobile, is_active, plain_password,
              daily_call_target, daily_lead_target, daily_whatsapp_target,
              daily_followup_target, daily_potential_target, created_at, updated_at
       FROM users
@@ -194,20 +194,21 @@ app.post(['/api/consultants', '/consultants'], authenticateToken, async (req, re
       return res.status(400).json({ error: 'Name and email are required' });
     }
 
+    const assignedPassword = (password && password.trim()) ? password.trim() : 'Consultant@123456';
     const salt = bcrypt.genSaltSync(10);
-    const passwordHash = bcrypt.hashSync(password || 'Consultant@123456', salt);
+    const passwordHash = bcrypt.hashSync(assignedPassword, salt);
 
     const result = await turso.execute({
       sql: `
         INSERT INTO users (
-          name, email, password_hash, role, mobile, is_active,
+          name, email, password_hash, plain_password, role, mobile, is_active,
           daily_call_target, daily_lead_target, daily_whatsapp_target,
           daily_followup_target, daily_potential_target
-        ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
-        RETURNING id, name, email, role, mobile, is_active, daily_call_target, daily_lead_target, daily_whatsapp_target, daily_followup_target, daily_potential_target, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
+        RETURNING id, name, email, plain_password, role, mobile, is_active, daily_call_target, daily_lead_target, daily_whatsapp_target, daily_followup_target, daily_potential_target, created_at
       `,
       args: [
-        name.trim(), email.trim().toLowerCase(), passwordHash, role, mobile || '',
+        name.trim(), email.trim().toLowerCase(), passwordHash, assignedPassword, role, mobile || '',
         daily_call_target, daily_lead_target, daily_whatsapp_target,
         daily_followup_target, daily_potential_target
       ],
@@ -228,10 +229,18 @@ app.put(['/api/consultants/:id', '/consultants/:id'], authenticateToken, async (
   try {
     const { id } = req.params;
     const {
-      name, email, mobile, is_active,
+      name, email, mobile, password, is_active,
       daily_call_target, daily_lead_target, daily_whatsapp_target,
       daily_followup_target, daily_potential_target
     } = req.body;
+
+    let passwordHash = null;
+    let plainPass = null;
+    if (password && password.trim()) {
+      const salt = bcrypt.genSaltSync(10);
+      passwordHash = bcrypt.hashSync(password.trim(), salt);
+      plainPass = password.trim();
+    }
 
     await turso.execute({
       sql: `
@@ -239,6 +248,8 @@ app.put(['/api/consultants/:id', '/consultants/:id'], authenticateToken, async (
           name = COALESCE(?, name),
           email = COALESCE(?, email),
           mobile = COALESCE(?, mobile),
+          password_hash = COALESCE(?, password_hash),
+          plain_password = COALESCE(?, plain_password),
           is_active = COALESCE(?, is_active),
           daily_call_target = COALESCE(?, daily_call_target),
           daily_lead_target = COALESCE(?, daily_lead_target),
@@ -250,6 +261,7 @@ app.put(['/api/consultants/:id', '/consultants/:id'], authenticateToken, async (
       `,
       args: [
         name || null, email ? email.toLowerCase() : null, mobile || null,
+        passwordHash, plainPass,
         is_active !== undefined ? is_active : null,
         daily_call_target || null, daily_lead_target || null,
         daily_whatsapp_target || null, daily_followup_target || null,
@@ -267,10 +279,18 @@ app.patch(['/api/consultants/:id', '/consultants/:id'], authenticateToken, async
   try {
     const { id } = req.params;
     const {
-      name, email, mobile, is_active,
+      name, email, mobile, password, is_active,
       daily_call_target, daily_lead_target, daily_whatsapp_target,
       daily_followup_target, daily_potential_target
     } = req.body;
+
+    let passwordHash = null;
+    let plainPass = null;
+    if (password && password.trim()) {
+      const salt = bcrypt.genSaltSync(10);
+      passwordHash = bcrypt.hashSync(password.trim(), salt);
+      plainPass = password.trim();
+    }
 
     await turso.execute({
       sql: `
@@ -278,6 +298,8 @@ app.patch(['/api/consultants/:id', '/consultants/:id'], authenticateToken, async
           name = COALESCE(?, name),
           email = COALESCE(?, email),
           mobile = COALESCE(?, mobile),
+          password_hash = COALESCE(?, password_hash),
+          plain_password = COALESCE(?, plain_password),
           is_active = COALESCE(?, is_active),
           daily_call_target = COALESCE(?, daily_call_target),
           daily_lead_target = COALESCE(?, daily_lead_target),
@@ -289,6 +311,7 @@ app.patch(['/api/consultants/:id', '/consultants/:id'], authenticateToken, async
       `,
       args: [
         name || null, email ? email.toLowerCase() : null, mobile || null,
+        passwordHash, plainPass,
         is_active !== undefined ? is_active : null,
         daily_call_target || null, daily_lead_target || null,
         daily_whatsapp_target || null, daily_followup_target || null,

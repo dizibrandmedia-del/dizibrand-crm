@@ -53,6 +53,7 @@ export interface User {
   role: UserRole;
   mobile?: string;
   is_active: number;
+  plain_password?: string;
   daily_call_target?: number;
   daily_lead_target?: number;
   daily_whatsapp_target?: number;

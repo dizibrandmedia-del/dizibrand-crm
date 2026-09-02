@@ -6,12 +6,17 @@ import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 import { toast } from 'sonner';
 import {
   Users, UserPlus, ShieldAlert, CheckCircle2,
-  XCircle, ArrowRightLeft, Target, Phone, Mail, Edit, Trash2, Power, UserCheck, Key, Lock
+  XCircle, ArrowRightLeft, Target, Phone, Mail, Edit, Trash2, Power, UserCheck, Key, Lock,
+  Eye, EyeOff, Copy, Check
 } from 'lucide-react';
 
 export const AdminTeamPage: React.FC = () => {
   const [consultants, setConsultants] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Credentials visibility and copy states
+  const [showPassword, setShowPassword] = useState<Record<number, boolean>>({});
+  const [copiedId, setCopiedId] = useState<number | null>(null);
 
   // Modals
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -32,6 +37,18 @@ export const AdminTeamPage: React.FC = () => {
   const [followupTarget, setFollowupTarget] = useState(15);
   const [potentialTarget, setPotentialTarget] = useState(5);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const toggleShowPassword = (id: number) => {
+    setShowPassword((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const handleCopyCredentials = (c: User) => {
+    const creds = `User ID / Email: ${c.email}\nPassword: ${c.plain_password || 'Consultant@123456'}`;
+    navigator.clipboard.writeText(creds);
+    setCopiedId(c.id);
+    toast.success(`Login credentials for ${c.name} copied!`);
+    setTimeout(() => setCopiedId(null), 2500);
+  };
 
   // Deactivation / Deletion Reassign form
   const [reassignConsultantId, setReassignConsultantId] = useState('');
@@ -70,7 +87,7 @@ export const AdminTeamPage: React.FC = () => {
     setName(c.name || '');
     setEmail(c.email || '');
     setMobile(c.mobile || '');
-    setPassword('');
+    setPassword(c.plain_password || 'Consultant@123456');
     setIsActiveStatus(c.is_active === 1 ? 1 : 0);
     setCallTarget(c.daily_call_target || 30);
     setWhatsappTarget(c.daily_whatsapp_target || 25);
@@ -278,6 +295,59 @@ export const AdminTeamPage: React.FC = () => {
                   <div className="text-xs text-slate-400 space-y-1 mt-1 font-medium">
                     <p className="flex items-center gap-1.5"><Mail className="w-3.5 h-3.5 text-slate-500" /> {c.email}</p>
                     {c.mobile && <p className="flex items-center gap-1.5"><Phone className="w-3.5 h-3.5 text-slate-500" /> {c.mobile}</p>}
+                  </div>
+
+                  {/* Credentials / Login Access Box */}
+                  <div className="mt-3 p-3 bg-slate-950/90 rounded-xl border border-indigo-950/70 shadow-inner space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1.5 text-[11px] font-bold text-indigo-400">
+                        <Key className="w-3.5 h-3.5" /> Login Credentials
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyCredentials(c)}
+                        className="flex items-center gap-1 px-2 py-0.5 bg-indigo-950 hover:bg-indigo-900 border border-indigo-800/60 text-indigo-300 text-[10px] font-bold rounded-md transition active:scale-95 cursor-pointer"
+                        title="Copy User ID & Password"
+                      >
+                        {copiedId === c.id ? (
+                          <>
+                            <Check className="w-3 h-3 text-emerald-400" />
+                            <span className="text-emerald-400">Copied!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3 h-3" />
+                            <span>Copy</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    <div className="space-y-1.5 text-xs font-mono">
+                      <div className="flex items-center justify-between bg-slate-900/90 px-2.5 py-1.5 rounded-lg border border-slate-800">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 font-sans">User ID / Email:</span>
+                        <span className="text-slate-200 font-bold select-all truncate max-w-[160px]" title={c.email}>
+                          {c.email}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between bg-slate-900/90 px-2.5 py-1.5 rounded-lg border border-slate-800">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 font-sans">Password:</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-amber-300 font-bold tracking-wider select-all">
+                            {showPassword[c.id] ? (c.plain_password || 'Consultant@123456') : '••••••••••••'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => toggleShowPassword(c.id)}
+                            className="text-slate-400 hover:text-white transition p-0.5 rounded cursor-pointer"
+                            title={showPassword[c.id] ? "Hide Password" : "Show Password"}
+                          >
+                            {showPassword[c.id] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5 text-slate-400 hover:text-indigo-300" />}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Quotas */}
@@ -499,16 +569,16 @@ export const AdminTeamPage: React.FC = () => {
 
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1">
-              Reset Password (Optional)
+              Login Password (View & Edit)
             </label>
             <input
               type="text"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Leave blank to keep existing password"
-              className="w-full px-3 py-2 text-xs bg-slate-950 border border-slate-700 text-white rounded-xl focus:ring-2 focus:ring-indigo-500 font-mono"
+              placeholder="e.g. Consultant@123456"
+              className="w-full px-3 py-2 text-xs bg-slate-950 border border-slate-700 text-amber-300 rounded-xl focus:ring-2 focus:ring-indigo-500 font-mono font-bold"
             />
-            <p className="text-[10px] text-slate-500 mt-0.5">Enter at least 6 characters if you wish to reset their password.</p>
+            <p className="text-[10px] text-slate-400 mt-0.5">Admin can view, copy, or set a new password for this team member.</p>
           </div>
 
           <div className="border-t border-slate-800 pt-3">
