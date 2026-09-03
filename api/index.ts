@@ -365,7 +365,7 @@ app.get(['/api/sources', '/sources'], authenticateToken, async (req, res) => {
 // 6. Leads Endpoints
 app.get(['/api/leads', '/leads'], authenticateToken, async (req: any, res) => {
   try {
-    const { page = 1, limit = 50, status, search, consultant_id, business_id, priority, source_id, state, city } = req.query;
+    const { page = 1, limit = 50, status, search, consultant_id, business_id, priority, source_id, state, city, assigned_date, assign_date } = req.query;
     const offset = (Number(page) - 1) * Number(limit);
 
     let whereClause = 'WHERE 1=1';
@@ -404,6 +404,22 @@ app.get(['/api/leads', '/leads'], authenticateToken, async (req: any, res) => {
     if (city && String(city).trim()) {
       whereClause += ' AND city = ?';
       args.push(String(city).trim());
+    }
+
+    const aDate = String(assigned_date || assign_date || '').trim();
+    if (aDate) {
+      if (aDate === 'today') {
+        whereClause += " AND date(COALESCE(leads.assigned_at, leads.updated_at)) = CURRENT_DATE";
+      } else if (aDate === 'yesterday') {
+        whereClause += " AND date(COALESCE(leads.assigned_at, leads.updated_at)) = date('now', '-1 day')";
+      } else if (aDate === 'this_week') {
+        whereClause += " AND date(COALESCE(leads.assigned_at, leads.updated_at)) >= date('now', 'weekday 0', '-6 days')";
+      } else if (aDate === 'this_month') {
+        whereClause += " AND strftime('%Y-%m', COALESCE(leads.assigned_at, leads.updated_at)) = strftime('%Y-%m', 'now')";
+      } else if (/^\d{4}-\d{2}-\d{2}$/.test(aDate)) {
+        whereClause += " AND date(COALESCE(leads.assigned_at, leads.updated_at)) = ?";
+        args.push(aDate);
+      }
     }
 
     if (business_id === 'unassigned' || business_id === 'unmapped') {
@@ -1937,6 +1953,7 @@ app.post(['/api/leads/unassign', '/leads/unassign'], authenticateToken, async (r
     const setClauses: string[] = ['updated_at = CURRENT_TIMESTAMP'];
     if (unassign_consultant) {
       setClauses.push('assigned_consultant_id = NULL');
+      setClauses.push('assigned_at = NULL');
       setClauses.push("status = CASE WHEN status = 'ASSIGNED' THEN 'NEW' ELSE status END");
     }
     if (unassign_business) {
@@ -2018,6 +2035,7 @@ app.post(['/api/leads/assign', '/leads/assign'], authenticateToken, async (req: 
       sql: `
         UPDATE leads 
         SET assigned_consultant_id = ?, 
+            assigned_at = CURRENT_TIMESTAMP,
             status = CASE WHEN status = 'NEW' AND ? IS NOT NULL THEN 'ASSIGNED' ELSE status END,
             updated_at = CURRENT_TIMESTAMP 
         WHERE id IN (${placeholders})
@@ -2461,7 +2479,9 @@ app.get([
   '/analytics/consultant-dashboard',
 ], authenticateToken, async (req: any, res) => {
   try {
-    const userId = req.user.id;
+    const userId = (req.user.role === 'SUPER_ADMIN' && req.query.consultant_id)
+      ? Number(req.query.consultant_id)
+      : req.user.id;
     const todayStr = new Date().toISOString().split('T')[0];
 
     const [statsRes, targetsRes, overdueRes, todayFollowupsRes, untouchedRes] = await Promise.all([
@@ -2536,10 +2556,17 @@ app.get([
       stats,
       todayMetrics: {
         calls: Number((stats as any).today_calls || 0),
+        today_calls: Number((stats as any).today_calls || 0),
         connected: Number((stats as any).today_connected || 0),
+        today_connected: Number((stats as any).today_connected || 0),
         whatsapp: Number((stats as any).today_whatsapp || 0),
+        today_whatsapp: Number((stats as any).today_whatsapp || 0),
         followups: Number((stats as any).today_followups || 0),
+        today_followups: Number((stats as any).today_followups || 0),
+        today_leads_worked: Number((stats as any).today_calls || 0) + Number((stats as any).today_whatsapp || 0),
+        total_assigned_leads: Number((stats as any).my_total_leads || 0),
         handovers: Number((stats as any).my_potential_handovers || 0),
+        potential_handovers: Number((stats as any).my_potential_handovers || 0),
       },
       targets,
       actionQueue: {

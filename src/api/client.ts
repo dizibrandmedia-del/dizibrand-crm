@@ -101,6 +101,7 @@ export const api = {
       consultant_id?: number | string;
       city?: string;
       state?: string;
+      assigned_date?: string;
       date_from?: string;
       date_to?: string;
       sort_by?: string;

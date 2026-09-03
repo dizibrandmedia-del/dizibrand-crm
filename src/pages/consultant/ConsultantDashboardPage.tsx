@@ -54,16 +54,18 @@ export const ConsultantDashboardPage: React.FC = () => {
   const actionQueue = data.actionQueue || {};
 
   const callTarget = targets.daily_call_target || 20;
-  const callsDone = metrics.today_calls || 0;
+  const callsDone = metrics.today_calls ?? metrics.calls ?? 0;
   const callPercentage = Math.min(Math.round((callsDone / callTarget) * 100), 100);
 
   const waTarget = targets.daily_whatsapp_target || 20;
-  const waDone = metrics.today_whatsapp || 0;
+  const waDone = metrics.today_whatsapp ?? metrics.whatsapp ?? 0;
   const waPercentage = Math.min(Math.round((waDone / waTarget) * 100), 100);
 
   const leadTarget = targets.daily_lead_target || 50;
-  const leadsWorked = metrics.today_leads_worked || 0;
+  const leadsWorked = metrics.today_leads_worked ?? (callsDone + waDone);
   const leadPercentage = Math.min(Math.round((leadsWorked / leadTarget) * 100), 100);
+
+  const totalAssigned = metrics.total_assigned_leads ?? data.stats?.my_total_leads ?? 0;
 
   return (
     <div className="space-y-5 pb-6">
@@ -85,7 +87,7 @@ export const ConsultantDashboardPage: React.FC = () => {
           <div className="text-right hidden sm:block">
             <span className="text-xs text-slate-400 block">Queue Pipeline</span>
             <span className="text-lg font-black text-amber-400 font-mono">
-              {metrics.total_assigned_leads || 0} Assigned
+              {totalAssigned} Assigned
             </span>
           </div>
         </div>

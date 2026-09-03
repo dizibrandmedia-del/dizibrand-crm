@@ -32,6 +32,7 @@ export const AdminLeadsPage: React.FC = () => {
   const [unassignedFilter, setUnassignedFilter] = useState('');
   const [stateFilter, setStateFilter] = useState('');
   const [cityFilter, setCityFilter] = useState('');
+  const [assignedDateFilter, setAssignedDateFilter] = useState('');
 
   // Dropdown auxiliary data
   const [consultants, setConsultants] = useState<User[]>([]);
@@ -88,6 +89,7 @@ export const AdminLeadsPage: React.FC = () => {
         business_id: businessFilter === 'unassigned' ? 'unassigned' : (businessFilter ? Number(businessFilter) : undefined),
         state: stateFilter || undefined,
         city: cityFilter || undefined,
+        assigned_date: assignedDateFilter || undefined,
       });
 
       setLeads(res.leads);
@@ -105,7 +107,7 @@ export const AdminLeadsPage: React.FC = () => {
 
   useEffect(() => {
     fetchLeads(1);
-  }, [search, statusFilter, priorityFilter, sourceFilter, consultantFilter, businessFilter, unassignedFilter, stateFilter, cityFilter]);
+  }, [search, statusFilter, priorityFilter, sourceFilter, consultantFilter, businessFilter, unassignedFilter, stateFilter, cityFilter, assignedDateFilter]);
 
   const handleStateChange = (selectedState: string) => {
     setStateFilter(selectedState);
@@ -138,6 +140,7 @@ export const AdminLeadsPage: React.FC = () => {
 
   const handleExportCSV = () => {
     const params = new URLSearchParams({
+      ...(search ? { search } : {}),
       ...(statusFilter ? { status: statusFilter } : {}),
       ...(priorityFilter ? { priority: priorityFilter } : {}),
       ...(sourceFilter ? { source_id: sourceFilter } : {}),
@@ -145,6 +148,7 @@ export const AdminLeadsPage: React.FC = () => {
       ...(businessFilter ? { internal_business_id: businessFilter } : {}),
       ...(stateFilter ? { state: stateFilter } : {}),
       ...(cityFilter ? { city: cityFilter } : {}),
+      ...(assignedDateFilter ? { assigned_date: assignedDateFilter } : {}),
     });
     window.location.href = `/api/exports/leads/csv?${params.toString()}`;
     toast.success('Lead database export initiated!');
@@ -160,6 +164,7 @@ export const AdminLeadsPage: React.FC = () => {
     setUnassignedFilter('');
     setStateFilter('');
     setCityFilter('');
+    setAssignedDateFilter('');
   };
 
   return (
@@ -276,44 +281,16 @@ export const AdminLeadsPage: React.FC = () => {
         sourceFilter={sourceFilter}
         onSourceChange={setSourceFilter}
         sourcesList={sources}
+        stateFilter={stateFilter}
+        onStateChange={handleStateChange}
+        statesList={locations.states}
+        cityFilter={cityFilter}
+        onCityChange={setCityFilter}
+        citiesList={locations.cities}
+        assignedDateFilter={assignedDateFilter}
+        onAssignedDateChange={setAssignedDateFilter}
         onReset={handleResetFilters}
       >
-        {/* State Filter */}
-        <select
-          value={stateFilter}
-          onChange={(e) => handleStateChange(e.target.value)}
-          className={`px-3 py-2 text-xs font-medium border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 transition cursor-pointer ${
-            stateFilter
-              ? 'bg-indigo-50 border-indigo-300 text-indigo-900 font-bold ring-1 ring-indigo-200'
-              : 'bg-slate-50 border-slate-200 text-slate-700'
-          }`}
-        >
-          <option value="">All States ({locations.states.length})</option>
-          {locations.states.map((s) => (
-            <option key={s.state} value={s.state}>
-              {s.state} ({s.count})
-            </option>
-          ))}
-        </select>
-
-        {/* City Filter */}
-        <select
-          value={cityFilter}
-          onChange={(e) => setCityFilter(e.target.value)}
-          className={`px-3 py-2 text-xs font-medium border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 transition cursor-pointer ${
-            cityFilter
-              ? 'bg-indigo-50 border-indigo-300 text-indigo-900 font-bold ring-1 ring-indigo-200'
-              : 'bg-slate-50 border-slate-200 text-slate-700'
-          }`}
-        >
-          <option value="">{stateFilter ? `All Cities in ${stateFilter}` : `All Cities (${locations.cities.length})`}</option>
-          {filteredCities.map((c) => (
-            <option key={`${c.state}-${c.city}`} value={c.city}>
-              {c.city} ({c.count})
-            </option>
-          ))}
-        </select>
-
         {/* Admin specific filters */}
         <select
           value={consultantFilter}

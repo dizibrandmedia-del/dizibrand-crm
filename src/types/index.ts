@@ -129,6 +129,7 @@ export interface Lead {
   assigned_consultant_id?: number;
   assigned_consultant_name?: string;
   assigned_consultant_email?: string;
+  assigned_at?: string;
   original_consultant_id?: number;
   original_consultant_name?: string;
   internal_business_id?: number;

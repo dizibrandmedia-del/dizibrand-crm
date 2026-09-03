@@ -28,6 +28,7 @@ export const AdminLayout: React.FC = () => {
     { label: 'Sales & Closing Deals', path: '/admin/sales', icon: Award },
     { label: 'Analytics & ROI', path: '/admin/analytics', icon: BarChart3 },
     { label: 'Consultant Team', path: '/admin/team', icon: UserCheck },
+    { label: 'Consultant Panel', path: '/consultant/dashboard', icon: Sparkles, badge: 'Live' },
     { label: 'Internal Businesses', path: '/admin/businesses', icon: Building2 },
     { label: 'Lead Sources', path: '/admin/sources', icon: Layers },
     { label: 'Audit Trail', path: '/admin/audit-logs', icon: ShieldCheck },
@@ -156,6 +157,15 @@ export const AdminLayout: React.FC = () => {
               <Building2 className="w-3.5 h-3.5 text-indigo-400" />
               <span>4 Businesses Active</span>
             </div>
+
+            {/* Quick Link to Consultant View */}
+            <Link
+              to="/consultant/dashboard"
+              className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-indigo-600/20 border border-indigo-500/40 text-indigo-300 hover:bg-indigo-600 hover:text-white text-xs font-bold transition shadow-xs"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Consultant View</span>
+            </Link>
 
             {/* Notifications Dropdown */}
             <div className="relative">

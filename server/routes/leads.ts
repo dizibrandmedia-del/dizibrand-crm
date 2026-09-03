@@ -74,6 +74,10 @@ leadsRouter.get('/', authMiddleware, (req: AuthRequest, res) => {
       assigned_consultant_id,
       internal_business_id,
       unassigned,
+      state,
+      city,
+      assigned_date,
+      assign_date,
       followup_filter, // 'today', 'overdue', 'upcoming'
       sort_by = 'created_at',
       sort_order = 'DESC'
@@ -82,6 +86,32 @@ leadsRouter.get('/', authMiddleware, (req: AuthRequest, res) => {
     const offset = (Number(page) - 1) * Number(limit);
     const conditions: string[] = [];
     const params: any[] = [];
+
+    if (state && String(state).trim()) {
+      conditions.push('leads.state = ?');
+      params.push(String(state).trim());
+    }
+
+    if (city && String(city).trim()) {
+      conditions.push('leads.city = ?');
+      params.push(String(city).trim());
+    }
+
+    const aDate = String(assigned_date || assign_date || '').trim();
+    if (aDate) {
+      if (aDate === 'today') {
+        conditions.push("date(COALESCE(leads.assigned_at, leads.updated_at)) = date('now')");
+      } else if (aDate === 'yesterday') {
+        conditions.push("date(COALESCE(leads.assigned_at, leads.updated_at)) = date('now', '-1 day')");
+      } else if (aDate === 'this_week') {
+        conditions.push("date(COALESCE(leads.assigned_at, leads.updated_at)) >= date('now', 'weekday 0', '-6 days')");
+      } else if (aDate === 'this_month') {
+        conditions.push("strftime('%Y-%m', COALESCE(leads.assigned_at, leads.updated_at)) = strftime('%Y-%m', 'now')");
+      } else if (/^\d{4}-\d{2}-\d{2}$/.test(aDate)) {
+        conditions.push("date(COALESCE(leads.assigned_at, leads.updated_at)) = ?");
+        params.push(aDate);
+      }
+    }
 
     // STRICT CONSULTANT ISOLATION
     if (user.role === 'CONSULTANT') {

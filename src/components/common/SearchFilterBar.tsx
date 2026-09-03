@@ -1,5 +1,5 @@
-import React from 'react';
-import { Search, Filter, RotateCcw } from 'lucide-react';
+import React, { useState } from 'react';
+import { Search, Filter, RotateCcw, MapPin, Calendar } from 'lucide-react';
 
 interface SearchFilterBarProps {
   search: string;
@@ -11,9 +11,18 @@ interface SearchFilterBarProps {
   sourceFilter?: string;
   onSourceChange?: (val: string) => void;
   sourcesList?: { id: number; name: string }[];
+  stateFilter?: string;
+  onStateChange?: (val: string) => void;
+  statesList?: { state: string; count?: number }[];
+  cityFilter?: string;
+  onCityChange?: (val: string) => void;
+  citiesList?: { city: string; state?: string; count?: number }[];
+  assignedDateFilter?: string;
+  onAssignedDateChange?: (val: string) => void;
   onReset?: () => void;
   placeholder?: string;
   children?: React.ReactNode;
+  isDark?: boolean;
 }
 
 export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
@@ -26,92 +35,239 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
   sourceFilter,
   onSourceChange,
   sourcesList = [],
+  stateFilter,
+  onStateChange,
+  statesList = [],
+  cityFilter,
+  onCityChange,
+  citiesList = [],
+  assignedDateFilter,
+  onAssignedDateChange,
   onReset,
   placeholder = 'Search by company, CIN, contact, mobile, or city...',
   children,
+  isDark = false,
 }) => {
+  const [isCustomDate, setIsCustomDate] = useState(false);
+
+  // Filter cities by state if state is selected
+  const availableCities = React.useMemo(() => {
+    if (!stateFilter) return citiesList;
+    return citiesList.filter(
+      (c) => c.state?.toLowerCase() === stateFilter.toLowerCase()
+    );
+  }, [stateFilter, citiesList]);
+
+  // Is assigned date custom date format YYYY-MM-DD
+  const isDatePattern = assignedDateFilter && /^\d{4}-\d{2}-\d{2}$/.test(assignedDateFilter);
+
+  const containerClasses = isDark
+    ? 'bg-slate-900/90 border-slate-800 text-slate-100 shadow-xl'
+    : 'bg-white border-slate-200 text-slate-900 shadow-sm';
+
+  const inputClasses = isDark
+    ? 'bg-slate-950 border-slate-700 text-white placeholder-slate-500 focus:bg-slate-900 focus:ring-indigo-500'
+    : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:bg-white focus:ring-indigo-500';
+
+  const selectClasses = isDark
+    ? 'bg-slate-950 border-slate-700 text-slate-200 focus:ring-indigo-500'
+    : 'bg-slate-50 border-slate-200 text-slate-700 focus:ring-indigo-500';
+
+  const activeSelectClasses = isDark
+    ? 'bg-indigo-950/80 border-indigo-500/60 text-indigo-300 font-semibold ring-1 ring-indigo-500/30'
+    : 'bg-indigo-50 border-indigo-300 text-indigo-900 font-semibold ring-1 ring-indigo-200';
+
   return (
-    <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
-      {/* Search Input */}
-      <div className="relative flex-1">
-        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => onSearchChange(e.target.value)}
-          placeholder={placeholder}
-          className="w-full pl-10 pr-4 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
-        />
-      </div>
+    <div className={`p-3.5 sm:p-4 rounded-2xl border transition flex flex-col gap-3 ${containerClasses}`}>
+      {/* Search Input Row */}
+      <div className="flex flex-col md:flex-row gap-2.5 items-stretch md:items-center justify-between">
+        <div className="relative flex-1">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder={placeholder}
+            className={`w-full pl-10 pr-4 py-2 text-xs sm:text-sm border rounded-xl focus:outline-none focus:ring-2 transition font-medium ${inputClasses}`}
+          />
+        </div>
 
-      {/* Filter Dropdowns */}
-      <div className="flex flex-wrap items-center gap-2">
-        {onStatusChange && (
-          <select
-            value={statusFilter || ''}
-            onChange={(e) => onStatusChange(e.target.value)}
-            className="px-3 py-2 text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700"
-          >
-            <option value="">All Statuses</option>
-            <option value="NEW">New</option>
-            <option value="ASSIGNED">Assigned</option>
-            <option value="CONTACT_ATTEMPTED">Contact Attempted</option>
-            <option value="CONNECTED">Connected</option>
-            <option value="INTERESTED">Interested</option>
-            <option value="FOLLOW_UP">Follow Up</option>
-            <option value="QUALIFIED">Qualified</option>
-            <option value="OWNER_HANDOVER">Owner Handover</option>
-            <option value="MEETING">Meeting</option>
-            <option value="PROPOSAL">Proposal</option>
-            <option value="NEGOTIATION">Negotiation</option>
-            <option value="WON">Won</option>
-            <option value="LOST">Lost</option>
-            <option value="NURTURE">Nurture</option>
-          </select>
-        )}
+        {/* Filter Controls Row / Wrap */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Status Filter */}
+          {onStatusChange && (
+            <select
+              value={statusFilter || ''}
+              onChange={(e) => onStatusChange(e.target.value)}
+              className={`px-3 py-2 text-xs font-medium border rounded-xl focus:outline-none focus:ring-2 cursor-pointer transition ${
+                statusFilter ? activeSelectClasses : selectClasses
+              }`}
+            >
+              <option value="">All Statuses</option>
+              <option value="NEW">New</option>
+              <option value="ASSIGNED">Assigned</option>
+              <option value="CONTACT_ATTEMPTED">Contact Attempted</option>
+              <option value="CONNECTED">Connected</option>
+              <option value="INTERESTED">Interested</option>
+              <option value="FOLLOW_UP">Follow Up</option>
+              <option value="QUALIFIED">Qualified</option>
+              <option value="OWNER_HANDOVER">Owner Handover</option>
+              <option value="MEETING">Meeting</option>
+              <option value="PROPOSAL">Proposal</option>
+              <option value="NEGOTIATION">Negotiation</option>
+              <option value="WON">Won</option>
+              <option value="LOST">Lost</option>
+              <option value="NURTURE">Nurture</option>
+            </select>
+          )}
 
-        {onPriorityChange && (
-          <select
-            value={priorityFilter || ''}
-            onChange={(e) => onPriorityChange(e.target.value)}
-            className="px-3 py-2 text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700"
-          >
-            <option value="">All Priorities</option>
-            <option value="HOT">🔥 Hot</option>
-            <option value="HIGH">High</option>
-            <option value="MEDIUM">Medium</option>
-            <option value="LOW">Low</option>
-          </select>
-        )}
+          {/* Priority Filter */}
+          {onPriorityChange && (
+            <select
+              value={priorityFilter || ''}
+              onChange={(e) => onPriorityChange(e.target.value)}
+              className={`px-3 py-2 text-xs font-medium border rounded-xl focus:outline-none focus:ring-2 cursor-pointer transition ${
+                priorityFilter ? activeSelectClasses : selectClasses
+              }`}
+            >
+              <option value="">All Priorities</option>
+              <option value="HOT">🔥 Hot</option>
+              <option value="HIGH">High</option>
+              <option value="MEDIUM">Medium</option>
+              <option value="LOW">Low</option>
+            </select>
+          )}
 
-        {onSourceChange && sourcesList.length > 0 && (
-          <select
-            value={sourceFilter || ''}
-            onChange={(e) => onSourceChange(e.target.value)}
-            className="px-3 py-2 text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700"
-          >
-            <option value="">All Sources</option>
-            {sourcesList.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
+          {/* Source Filter */}
+          {onSourceChange && sourcesList.length > 0 && (
+            <select
+              value={sourceFilter || ''}
+              onChange={(e) => onSourceChange(e.target.value)}
+              className={`px-3 py-2 text-xs font-medium border rounded-xl focus:outline-none focus:ring-2 cursor-pointer transition ${
+                sourceFilter ? activeSelectClasses : selectClasses
+              }`}
+            >
+              <option value="">All Sources</option>
+              {sourcesList.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          )}
+
+          {/* State Filter */}
+          {onStateChange && statesList.length > 0 && (
+            <select
+              value={stateFilter || ''}
+              onChange={(e) => {
+                const val = e.target.value;
+                onStateChange(val);
+                if (onCityChange && cityFilter && val) {
+                  const matches = citiesList.some(
+                    (c) => c.state?.toLowerCase() === val.toLowerCase() && c.city.toLowerCase() === cityFilter.toLowerCase()
+                  );
+                  if (!matches) onCityChange('');
+                }
+              }}
+              className={`px-3 py-2 text-xs font-medium border rounded-xl focus:outline-none focus:ring-2 cursor-pointer transition ${
+                stateFilter ? activeSelectClasses : selectClasses
+              }`}
+            >
+              <option value="">All States ({statesList.length})</option>
+              {statesList.map((s) => (
+                <option key={s.state} value={s.state}>
+                  {s.state} {s.count !== undefined ? `(${s.count})` : ''}
+                </option>
+              ))}
+            </select>
+          )}
+
+          {/* City Filter */}
+          {onCityChange && (
+            <select
+              value={cityFilter || ''}
+              onChange={(e) => onCityChange(e.target.value)}
+              className={`px-3 py-2 text-xs font-medium border rounded-xl focus:outline-none focus:ring-2 cursor-pointer transition ${
+                cityFilter ? activeSelectClasses : selectClasses
+              }`}
+            >
+              <option value="">
+                {stateFilter ? `All Cities in ${stateFilter}` : `All Cities (${citiesList.length})`}
               </option>
-            ))}
-          </select>
-        )}
+              {availableCities.map((c) => (
+                <option key={`${c.state || ''}-${c.city}`} value={c.city}>
+                  {c.city} {c.count !== undefined ? `(${c.count})` : ''}
+                </option>
+              ))}
+            </select>
+          )}
 
-        {children}
+          {/* Lead Assign Date Filter */}
+          {onAssignedDateChange && (
+            <div className="flex items-center gap-1">
+              <select
+                value={isDatePattern ? 'custom' : (assignedDateFilter || '')}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === 'custom') {
+                    setIsCustomDate(true);
+                    if (!isDatePattern) {
+                      const today = new Date().toISOString().split('T')[0];
+                      onAssignedDateChange(today);
+                    }
+                  } else {
+                    setIsCustomDate(false);
+                    onAssignedDateChange(val);
+                  }
+                }}
+                className={`px-3 py-2 text-xs font-medium border rounded-xl focus:outline-none focus:ring-2 cursor-pointer transition ${
+                  assignedDateFilter ? activeSelectClasses : selectClasses
+                }`}
+              >
+                <option value="">All Assign Dates</option>
+                <option value="today">📅 Assigned Today</option>
+                <option value="yesterday">Assigned Yesterday</option>
+                <option value="this_week">Assigned This Week</option>
+                <option value="this_month">Assigned This Month</option>
+                <option value="custom">Pick Specific Date...</option>
+              </select>
 
-        {onReset && (
-          <button
-            type="button"
-            onClick={onReset}
-            title="Reset Filters"
-            className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition"
-          >
-            <RotateCcw className="w-4 h-4" />
-          </button>
-        )}
+              {(isCustomDate || isDatePattern) && (
+                <div className="flex items-center">
+                  <input
+                    type="date"
+                    value={isDatePattern ? assignedDateFilter : new Date().toISOString().split('T')[0]}
+                    onChange={(e) => onAssignedDateChange(e.target.value)}
+                    className={`px-2.5 py-1.5 text-xs font-semibold border rounded-xl focus:outline-none focus:ring-2 transition ${activeSelectClasses}`}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {children}
+
+          {onReset && (
+            <button
+              type="button"
+              onClick={() => {
+                setIsCustomDate(false);
+                onReset();
+              }}
+              title="Reset Filters"
+              className={`p-2 rounded-xl transition ${
+                isDark
+                  ? 'text-slate-400 hover:text-white hover:bg-slate-800'
+                  : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'
+              }`}
+            >
+              <RotateCcw className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
 };
+
