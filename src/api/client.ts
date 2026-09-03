@@ -592,7 +592,8 @@ export const api = {
 
   // Businesses (Admin Only)
   businesses: {
-    list: () => request<{ businesses: Business[] }>('/businesses'),
+    list: (params?: { consultant_id?: number | string }) =>
+      request<{ businesses: Business[] }>(params?.consultant_id ? `/businesses?consultant_id=${params.consultant_id}` : '/businesses'),
     create: (data: { name: string; code: string; description?: string }) =>
       request<{ message: string; business_id: number }>('/businesses', {
         method: 'POST',

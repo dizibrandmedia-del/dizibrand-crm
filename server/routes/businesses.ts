@@ -1,13 +1,25 @@
 import { Router } from 'express';
 import { db } from '../db/database.js';
-import { requireAdmin, AuthRequest } from '../middleware/auth.js';
+import { requireAdmin, authMiddleware, AuthRequest } from '../middleware/auth.js';
 import { logAudit } from '../middleware/audit.js';
 
 export const businessesRouter = Router();
 
-// 1. Get Businesses (Super Admin Only)
-businessesRouter.get('/', requireAdmin, (req: AuthRequest, res) => {
+// 1. Get Businesses (Consultants get their assigned businesses, Admins get all)
+businessesRouter.get('/', authMiddleware, (req: AuthRequest, res) => {
   try {
+    const user = req.user!;
+    if (user.role === 'CONSULTANT') {
+      const businesses = db.prepare(`
+        SELECT DISTINCT businesses.*
+        FROM businesses
+        JOIN leads ON leads.internal_business_id = businesses.id
+        WHERE leads.assigned_consultant_id = ?
+        ORDER BY businesses.name ASC
+      `).all(user.id);
+      return res.json({ businesses });
+    }
+
     const businesses = db.prepare(`
       SELECT 
         businesses.*,

@@ -13,7 +13,7 @@ import { PotentialHandoverModal } from '../../components/leads/PotentialHandover
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 import { EmptyState } from '../../components/common/EmptyState';
 import { toast } from 'sonner';
-import { Users, Plus, Download, UploadCloud, CheckSquare, Sparkles, Filter, Building2, MapPin, X } from 'lucide-react';
+import { Users, Plus, Download, UploadCloud, CheckSquare, Sparkles, Filter, Building2, MapPin, Calendar, X } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 
 export const AdminLeadsPage: React.FC = () => {
@@ -322,26 +322,37 @@ export const AdminLeadsPage: React.FC = () => {
         </select>
       </SearchFilterBar>
 
-      {/* Active Geo Filter Banner */}
-      {(stateFilter || cityFilter) && (
-        <div className="flex items-center justify-between gap-2 px-3.5 py-2 bg-indigo-50/90 border border-indigo-200/80 rounded-xl text-xs text-indigo-900 shadow-xs">
-          <div className="flex items-center gap-2">
-            <MapPin className="w-4 h-4 text-indigo-600 shrink-0" />
-            <span>
-              <strong>Geo Filter Active:</strong>{' '}
-              {stateFilter && <span className="px-2 py-0.5 bg-indigo-100/80 rounded-md font-semibold text-indigo-950">{stateFilter}</span>}
-              {stateFilter && cityFilter && <span className="text-indigo-400 font-bold mx-1">›</span>}
-              {cityFilter && <span className="px-2 py-0.5 bg-indigo-100/80 rounded-md font-semibold text-indigo-950">{cityFilter}</span>}
-              <span className="text-slate-500 ml-2">({pagination.total} matching leads found)</span>
-            </span>
+      {/* Active Filter Banner */}
+      {(stateFilter || cityFilter || entryDateFilter) && (
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2 bg-indigo-50/90 border border-indigo-200/80 rounded-xl text-xs text-indigo-900 shadow-xs">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-bold text-indigo-950">Active Filters:</span>
+            {entryDateFilter && (
+              <span className="px-2 py-0.5 bg-indigo-100/80 border border-indigo-200 rounded-md font-semibold text-indigo-950 flex items-center gap-1">
+                <Calendar className="w-3 h-3 text-indigo-600" />
+                Entry: {new Date(entryDateFilter + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+              </span>
+            )}
+            {stateFilter && (
+              <span className="px-2 py-0.5 bg-indigo-100/80 border border-indigo-200 rounded-md font-semibold text-indigo-950 flex items-center gap-1">
+                <MapPin className="w-3 h-3 text-indigo-600" />
+                {stateFilter}
+              </span>
+            )}
+            {cityFilter && (
+              <span className="px-2 py-0.5 bg-indigo-100/80 border border-indigo-200 rounded-md font-semibold text-indigo-950">
+                City: {cityFilter}
+              </span>
+            )}
+            <span className="text-slate-500 ml-1">({pagination.total} matching leads)</span>
           </div>
           <button
             type="button"
-            onClick={() => { setStateFilter(''); setCityFilter(''); }}
+            onClick={() => { setStateFilter(''); setCityFilter(''); setEntryDateFilter(''); }}
             className="flex items-center gap-1 text-[11px] font-semibold text-indigo-700 hover:text-indigo-950 hover:bg-indigo-100 px-2 py-1 rounded-lg transition cursor-pointer"
           >
             <X className="w-3.5 h-3.5" />
-            Clear Geo Filter
+            Clear Filters
           </button>
         </div>
       )}

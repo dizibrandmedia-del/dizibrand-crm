@@ -366,8 +366,27 @@ app.delete(['/api/consultants/:id', '/consultants/:id'], authenticateToken, asyn
 });
 
 // 4. Businesses Endpoints
-app.get(['/api/businesses', '/businesses'], authenticateToken, async (req, res) => {
+app.get(['/api/businesses', '/businesses'], authenticateToken, async (req: any, res) => {
   try {
+    const isConsultant = req.user.role === 'CONSULTANT';
+    const targetConsultantId = isConsultant ? req.user.id : (req.query.consultant_id || undefined);
+
+    if (targetConsultantId) {
+      const result = await turso.execute({
+        sql: `
+          SELECT DISTINCT businesses.*
+          FROM businesses
+          JOIN leads ON leads.internal_business_id = businesses.id
+          WHERE leads.assigned_consultant_id = ?
+          ORDER BY businesses.name ASC
+        `,
+        args: [targetConsultantId],
+      });
+      return res.json({
+        businesses: result.rows,
+      });
+    }
+
     const result = await turso.execute('SELECT * FROM businesses ORDER BY id ASC');
     res.json({
       businesses: result.rows,

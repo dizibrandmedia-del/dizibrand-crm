@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../api/client';
+import { useAuth } from '../../context/AuthContext';
 import { Lead, LeadSource, Tag } from '../../types';
 import { LeadCard } from '../../components/leads/LeadCard';
 import { LeadTable } from '../../components/leads/LeadTable';
@@ -16,6 +17,7 @@ import { toast } from 'sonner';
 import { Users, Plus, LayoutGrid, List, Filter } from 'lucide-react';
 
 export const ConsultantLeadsPage: React.FC = () => {
+  const { user } = useAuth();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [sources, setSources] = useState<LeadSource[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
@@ -46,11 +48,12 @@ export const ConsultantLeadsPage: React.FC = () => {
 
   const fetchAux = async () => {
     try {
+      const targetConsultantId = user?.role === 'CONSULTANT' ? user.id : undefined;
       const [sRes, tRes, bRes, locRes]: any[] = await Promise.all([
         api.sources.list().catch(() => ({ sources: [] })),
         api.tags.list().catch(() => ({ tags: [] })),
-        api.businesses.list().catch(() => ({ businesses: [] })),
-        api.leads.getLocations().catch(() => ({ states: [], cities: [] })),
+        api.businesses.list({ consultant_id: targetConsultantId }).catch(() => ({ businesses: [] })),
+        api.leads.getLocations({ consultant_id: targetConsultantId }).catch(() => ({ states: [], cities: [] })),
       ]);
       setSources(sRes.sources || []);
       setTags(tRes.tags || []);
@@ -185,14 +188,18 @@ export const ConsultantLeadsPage: React.FC = () => {
         }}
         isDark={true}
       >
-        {/* Business Filter */}
+        {/* Business Filter (Only businesses assigned to this consultant) */}
         {businesses.length > 0 && (
           <select
             value={businessFilter}
             onChange={(e) => setBusinessFilter(e.target.value)}
-            className="px-3 py-2 text-xs font-medium bg-slate-950 border border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-200 cursor-pointer"
+            className={`px-3 py-2 text-xs font-medium bg-slate-950 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer transition ${
+              businessFilter ? 'border-indigo-500 text-indigo-200 ring-1 ring-indigo-500/30 font-semibold' : 'border-slate-700 text-slate-200'
+            }`}
           >
-            <option value="">All Businesses</option>
+            <option value="">
+              {businesses.length > 1 ? `All My Businesses (${businesses.length})` : 'All Assigned Businesses'}
+            </option>
             {businesses.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}

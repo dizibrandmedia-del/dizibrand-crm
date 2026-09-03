@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Search, Filter, RotateCcw, MapPin, Calendar } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Search, Filter, RotateCcw, MapPin, Calendar, X } from 'lucide-react';
 
 interface SearchFilterBarProps {
   search: string;
@@ -54,8 +54,6 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
   children,
   isDark = false,
 }) => {
-  const [isCustomDate, setIsCustomDate] = useState(false);
-
   // Unify date filter prop
   const activeDateValue = dateFilter ?? assignedDateFilter ?? '';
   const handleDateChange = onDateChange ?? onAssignedDateChange;
@@ -68,9 +66,6 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
       (c) => c.state?.toLowerCase() === stateFilter.toLowerCase()
     );
   }, [stateFilter, citiesList]);
-
-  // Is assigned date custom date format YYYY-MM-DD
-  const isDatePattern = activeDateValue && /^\d{4}-\d{2}-\d{2}$/.test(activeDateValue);
 
   const containerClasses = isDark
     ? 'bg-slate-900/90 border-slate-800 text-slate-100 shadow-xl'
@@ -214,46 +209,46 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
             </select>
           )}
 
-          {/* Date Filter (Lead Entry Date for Admin / Lead Assign Date for Consultant) */}
+          {/* Date Filter (Direct calendar popup on click, NO presets) */}
           {handleDateChange && (
-            <div className="flex items-center gap-1">
-              <select
-                value={isDatePattern ? 'custom' : (activeDateValue || '')}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  if (val === 'custom') {
-                    setIsCustomDate(true);
-                    if (!isDatePattern) {
-                      const today = new Date().toISOString().split('T')[0];
-                      handleDateChange(today);
-                    }
-                  } else {
-                    setIsCustomDate(false);
-                    handleDateChange(val);
-                  }
-                }}
-                className={`px-3 py-2 text-xs font-medium border rounded-xl focus:outline-none focus:ring-2 cursor-pointer transition ${
+            <div className="relative inline-flex items-center">
+              <button
+                type="button"
+                className={`flex items-center gap-2 px-3 py-2 text-xs font-medium border rounded-xl cursor-pointer transition select-none ${
                   activeDateValue ? activeSelectClasses : selectClasses
                 }`}
+                title={isEntryDate ? 'Click to open calendar for Lead Entry Date' : 'Click to open calendar for Lead Assigned Date'}
               >
-                <option value="">{isEntryDate ? 'All Entry Dates' : 'All Assign Dates'}</option>
-                <option value="today">📅 {isEntryDate ? 'Added Today' : 'Assigned Today'}</option>
-                <option value="yesterday">{isEntryDate ? 'Added Yesterday' : 'Assigned Yesterday'}</option>
-                <option value="this_week">{isEntryDate ? 'Added This Week' : 'Assigned This Week'}</option>
-                <option value="this_month">{isEntryDate ? 'Added This Month' : 'Assigned This Month'}</option>
-                <option value="custom">Pick Specific Date...</option>
-              </select>
+                <Calendar className={`w-3.5 h-3.5 shrink-0 ${activeDateValue ? 'text-indigo-600' : (isDark ? 'text-slate-400' : 'text-slate-500')}`} />
+                <span className="font-semibold whitespace-nowrap">
+                  {activeDateValue
+                    ? `${isEntryDate ? 'Entry' : 'Assigned'}: ${new Date(activeDateValue + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`
+                    : (isEntryDate ? 'All Entry Dates' : 'All Assigned Dates')}
+                </span>
+                {activeDateValue ? (
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      handleDateChange('');
+                    }}
+                    className="relative z-10 p-0.5 rounded-md hover:bg-indigo-200/60 dark:hover:bg-indigo-900/60 text-indigo-500 dark:text-indigo-300 transition"
+                    title="Clear Date"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-slate-400 opacity-70 ml-0.5">📅</span>
+                )}
+              </button>
 
-              {(isCustomDate || isDatePattern) && (
-                <div className="flex items-center">
-                  <input
-                    type="date"
-                    value={isDatePattern ? activeDateValue : new Date().toISOString().split('T')[0]}
-                    onChange={(e) => handleDateChange(e.target.value)}
-                    className={`px-2.5 py-1.5 text-xs font-semibold border rounded-xl focus:outline-none focus:ring-2 transition ${activeSelectClasses}`}
-                  />
-                </div>
-              )}
+              <input
+                type="date"
+                value={activeDateValue || ''}
+                onChange={(e) => handleDateChange(e.target.value)}
+                className="absolute inset-0 opacity-0 cursor-pointer pointer-events-auto w-full h-full"
+                title={isEntryDate ? 'Select Entry Date' : 'Select Assigned Date'}
+              />
             </div>
           )}
 
@@ -262,10 +257,7 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
           {onReset && (
             <button
               type="button"
-              onClick={() => {
-                setIsCustomDate(false);
-                onReset();
-              }}
+              onClick={onReset}
               title="Reset Filters"
               className={`p-2 rounded-xl transition ${
                 isDark
