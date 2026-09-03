@@ -5,6 +5,12 @@ import { api } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
 import { MessageCircle, Copy, Building2, UserCheck, RefreshCw } from 'lucide-react';
+import {
+  normalizeBusinessKey,
+  getBusinessDisplayName,
+  getBusinessTemplates,
+  BusinessKey,
+} from '../../services/whatsappTemplates';
 
 interface WhatsAppModalProps {
   isOpen: boolean;
@@ -29,9 +35,11 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
   // Business verticals list
   const [businesses, setBusinesses] = useState<{ id: number; name: string; code?: string }[]>([]);
 
-  // Resolved dynamic greeting names
+  // Resolved dynamic greeting parameters
   const [resolvedBusinessName, setResolvedBusinessName] = useState<string>('');
   const [resolvedMemberName, setResolvedMemberName] = useState<string>('');
+  const [scheduledDate, setScheduledDate] = useState<string>('');
+  const [scheduledTime, setScheduledTime] = useState<string>('');
 
   // Fetch available business categories once on mount
   useEffect(() => {
@@ -51,6 +59,7 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
     if (!isOpen || !lead) return;
 
     setCustomMessage('');
+    setTemplate('intro');
 
     // 1. Initial resolution of business name
     let initialBiz = (lead.business_name || (lead as any).internal_business_name || '').trim();
@@ -59,10 +68,12 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
       if (match) initialBiz = match.name;
     }
     if (!initialBiz && businesses.length > 0) {
-      // If unassigned, default to Fyntrust or first available
       const fyn = businesses.find((b) => b.name.toLowerCase().includes('fyn'));
       initialBiz = fyn ? fyn.name : businesses[0].name;
     }
+
+    const initialKey = normalizeBusinessKey(initialBiz || lead.internal_business_id);
+    setResolvedBusinessName(getBusinessDisplayName(initialKey));
 
     // 2. Initial resolution of consultant name
     let initialMember = (lead.assigned_consultant_name || '').trim();
@@ -70,8 +81,9 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
       initialMember = user.name.trim();
     }
 
-    setResolvedBusinessName(initialBiz);
-    setResolvedMemberName(initialMember || 'Consultant');
+    setResolvedMemberName(initialMember || 'Business Consultant');
+    setScheduledDate(lead.next_followup_date || '');
+    setScheduledTime(lead.next_followup_time || '');
 
     // 3. Fetch latest full details from DB to guarantee 100% accuracy
     if (lead.id) {
@@ -81,15 +93,26 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
             const fetchedBiz = (res.lead.business_name || res.lead.internal_business_name || '').trim();
             const fetchedMember = (res.lead.assigned_consultant_name || '').trim();
 
-            if (fetchedBiz) {
-              setResolvedBusinessName(fetchedBiz);
-            } else if (res.lead.internal_business_id && businesses.length > 0) {
-              const match = businesses.find((b) => b.id === Number(res.lead.internal_business_id));
-              if (match) setResolvedBusinessName(match.name);
+            if (fetchedBiz || res.lead.internal_business_id) {
+              const fetchedKey = normalizeBusinessKey(fetchedBiz || res.lead.internal_business_id);
+              setResolvedBusinessName(getBusinessDisplayName(fetchedKey));
             }
 
             if (fetchedMember) {
               setResolvedMemberName(fetchedMember);
+            }
+
+            if (res.lead.next_followup_date) {
+              setScheduledDate(res.lead.next_followup_date);
+            }
+            if (res.lead.next_followup_time) {
+              setScheduledTime(res.lead.next_followup_time);
+            }
+
+            if (!res.lead.next_followup_date && res.follow_ups && res.follow_ups.length > 0) {
+              const latest = res.follow_ups[0];
+              if (latest?.followup_date) setScheduledDate(latest.followup_date);
+              if (latest?.followup_time) setScheduledTime(latest.followup_time);
             }
           }
         })
@@ -103,36 +126,31 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
   const digits = rawMobile.replace(/[^0-9]/g, '');
   const formattedPhone = digits.length === 10 ? `91${digits}` : digits;
 
-  // Exact dynamic greeting components:
-  // "Hello [Lead Name], this is [Consultant Name] from [Assigned Business Name]."
-  const leadName = lead.contact_person?.trim() || lead.company_name?.trim() || 'Sir/Madam';
+  // Resolve business key and official business name
+  const currentBusinessKey: BusinessKey = normalizeBusinessKey({
+    name: resolvedBusinessName,
+    id: businesses.find((b) => b.name.toLowerCase() === resolvedBusinessName.toLowerCase())?.id || lead.internal_business_id,
+  });
+
+  const activeBusinessDisplayName = getBusinessDisplayName(currentBusinessKey);
+
+  const clientName = lead.contact_person?.trim() || lead.company_name?.trim() || 'Sir/Madam';
+  const leadName = clientName;
   const consultantName = resolvedMemberName?.trim() || user?.name?.trim() || 'Business Consultant';
-  const assignedBusinessName = resolvedBusinessName?.trim() || lead.business_name?.trim() || 'Fyntrust';
+  const companyName = lead.company_name?.trim() || 'your company';
 
-  const templates: Record<string, { title: string; text: string }> = {
-    intro: {
-      title: 'Introduction & Value Proposition',
-      text: `Hello ${leadName}, this is ${consultantName} from ${assignedBusinessName}.\n\nWe noticed that ${lead.company_name} is scaling rapidly. We specialize in corporate services, compliance, and specialized growth advisory designed for enterprises in your industry.\n\nWould you be open for a brief 10-minute discovery call this week?\n\nWarm regards,\n${consultantName}\n${assignedBusinessName}`,
-    },
-    service_inquiry: {
-      title: 'Business Service & Solutions',
-      text: `Hello ${leadName}, this is ${consultantName} from ${assignedBusinessName}.\n\nI am reaching out regarding business solutions and specialized corporate services for ${lead.company_name}. We help companies streamline their operations, filings, and growth roadmap.\n\nCould we schedule a quick 5-minute call today to discuss how ${assignedBusinessName} can assist your operations?\n\nBest regards,\n${consultantName}\n${assignedBusinessName}`,
-    },
-    pitch_deck: {
-      title: 'Share Company Portfolio Deck',
-      text: `Hello ${leadName}, this is ${consultantName} from ${assignedBusinessName}.\n\nThank you for your time on our recent discussion. As promised, I am sharing the corporate presentation and tailored solutions from ${assignedBusinessName} for ${lead.company_name}.\n\nPlease let me know a convenient time to review the proposal together.\n\nWarm regards,\n${consultantName}\n${assignedBusinessName}`,
-    },
-    follow_up: {
-      title: 'Follow-up on Discussion / Proposal',
-      text: `Hello ${leadName}, this is ${consultantName} from ${assignedBusinessName}.\n\nJust following up regarding our previous discussion for ${lead.company_name}. Did you get a chance to review the details we shared from ${assignedBusinessName}? Looking forward to hearing your thoughts.\n\nBest regards,\n${consultantName}\n${assignedBusinessName}`,
-    },
-    meeting_confirm: {
-      title: 'Discovery Meeting Confirmation',
-      text: `Hello ${leadName}, this is ${consultantName} from ${assignedBusinessName}.\n\nConfirming our scheduled discovery meeting with ${assignedBusinessName} regarding ${lead.company_name} for ${lead.next_followup_date || 'our upcoming call'}.\n\nPlease let me know if you need to adjust the timing or have any questions beforehand.\n\nBest regards,\n${consultantName}\n${assignedBusinessName}`,
-    },
-  };
+  // Generate business-specific templates via centralized service
+  const templates = getBusinessTemplates(currentBusinessKey, {
+    clientName,
+    consultantName,
+    companyName,
+    scheduledDate,
+    scheduledTime,
+    businessName: activeBusinessDisplayName,
+  });
 
-  const messageToSend = customMessage || (templates[template] ? templates[template].text : '');
+  const activeTemplateDef = templates[template] || templates['intro'];
+  const messageToSend = customMessage !== '' ? customMessage : (activeTemplateDef?.text || '');
 
   const handleOpenWhatsApp = () => {
     if (!formattedPhone || formattedPhone.length < 10) {
@@ -200,20 +218,26 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
               Greeting as Business:
             </label>
             <select
-              value={resolvedBusinessName}
+              value={activeBusinessDisplayName}
               onChange={(e) => {
                 setResolvedBusinessName(e.target.value);
                 setCustomMessage(''); // Regenerates template with new business name
               }}
-              className="w-full text-xs font-bold text-indigo-950 bg-white border border-indigo-200 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-indigo-500 shadow-2xs"
+              className="w-full text-xs font-bold text-indigo-950 bg-white border border-indigo-200 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-indigo-500 shadow-2xs cursor-pointer"
             >
-              {businesses.map((b) => (
-                <option key={b.id} value={b.name}>
-                  {b.name}
+              {Array.from(
+                new Set(
+                  businesses.length > 0
+                    ? businesses.map((b) => getBusinessDisplayName(normalizeBusinessKey(b)))
+                    : ['FynTrust', 'DiziBrand Media', 'Strategic HR', 'No Brokerage']
+                )
+              ).map((officialName) => (
+                <option key={officialName} value={officialName}>
+                  {officialName}
                 </option>
               ))}
-              {!businesses.some((b) => b.name === resolvedBusinessName) && resolvedBusinessName && (
-                <option value={resolvedBusinessName}>{resolvedBusinessName}</option>
+              {!businesses.some((b) => getBusinessDisplayName(normalizeBusinessKey(b)) === activeBusinessDisplayName) && (
+                <option value={activeBusinessDisplayName}>{activeBusinessDisplayName}</option>
               )}
             </select>
           </div>
@@ -266,7 +290,7 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({
         <div>
           <div className="flex items-center justify-between mb-1">
             <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
-              Live Preview (Greeting as <span className="text-indigo-700 font-extrabold">{consultantName}</span> from <span className="text-indigo-700 font-extrabold">{assignedBusinessName}</span>)
+              Live Preview (Greeting as <span className="text-indigo-700 font-extrabold">{consultantName}</span> from <span className="text-indigo-700 font-extrabold">{activeBusinessDisplayName}</span>)
             </label>
             <button
               type="button"
