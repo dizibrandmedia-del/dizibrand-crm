@@ -92,7 +92,7 @@ app.get(['/', '/api', '/api/health', '/health'], async (req, res) => {
 });
 
 // Deploy sync script for Hostinger
-app.get('/api/deploy-script', (req, res) => {
+app.get(['/api/deploy-script', '/deploy-script'], (req, res) => {
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
   res.send(`#!/bin/bash
 CRM_DIR="/home/u468161300/domains/dizibrandmedia.com/public_html/crm"
