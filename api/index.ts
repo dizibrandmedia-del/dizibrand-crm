@@ -97,12 +97,21 @@ app.get(['/api/deploy-script', '/deploy-script'], (req, res) => {
   res.send(`#!/bin/bash
 CRM_DIR="/home/u468161300/domains/dizibrandmedia.com/public_html/crm"
 ROOT_DIR="/home/u468161300/domains/dizibrandmedia.com/public_html"
+
 mkdir -p "$CRM_DIR/assets" "$ROOT_DIR/assets"
+
+# Download fresh index.html
 curl -sL https://dizibrand-crm.vercel.app/index.html -o "$CRM_DIR/index.html"
 cp "$CRM_DIR/index.html" "$ROOT_DIR/index.html"
 
 JS_FILE=$(grep -o 'assets/index-[^"]*\\.js' "$CRM_DIR/index.html" | head -n 1)
 CSS_FILE=$(grep -o 'assets/index-[^"]*\\.css' "$CRM_DIR/index.html" | head -n 1)
+
+# Purge any old stale index js and css files from assets
+find "$CRM_DIR/assets" -type f -name "index-*.js" ! -name "$(basename "$JS_FILE")" -delete 2>/dev/null
+find "$CRM_DIR/assets" -type f -name "index-*.css" ! -name "$(basename "$CSS_FILE")" -delete 2>/dev/null
+find "$ROOT_DIR/assets" -type f -name "index-*.js" ! -name "$(basename "$JS_FILE")" -delete 2>/dev/null
+find "$ROOT_DIR/assets" -type f -name "index-*.css" ! -name "$(basename "$CSS_FILE")" -delete 2>/dev/null
 
 if [ -n "$JS_FILE" ]; then
   curl -sL "https://dizibrand-crm.vercel.app/$JS_FILE" -o "$CRM_DIR/$JS_FILE"
@@ -113,6 +122,30 @@ if [ -n "$CSS_FILE" ]; then
   curl -sL "https://dizibrand-crm.vercel.app/$CSS_FILE" -o "$CRM_DIR/$CSS_FILE"
   cp "$CRM_DIR/$CSS_FILE" "$ROOT_DIR/$CSS_FILE"
 fi
+
+# Generate robust .htaccess with strict no-cache for HTML
+cat << 'HTACCESS_EOF' > "$CRM_DIR/.htaccess"
+<IfModule mod_headers.c>
+    Header set Access-Control-Allow-Origin "*"
+    <FilesMatch "\.(html|htm)$">
+        Header set Cache-Control "no-cache, no-store, must-revalidate, max-age=0"
+        Header set Pragma "no-cache"
+        Header set Expires "0"
+    </FilesMatch>
+    <FilesMatch "\.(js|css)$">
+        Header set Cache-Control "public, max-age=31536000, immutable"
+    </FilesMatch>
+</IfModule>
+
+RewriteEngine On
+RewriteBase /
+RewriteRule ^index\.html$ - [L]
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule . /index.html [L]
+HTACCESS_EOF
+
+cp "$CRM_DIR/.htaccess" "$ROOT_DIR/.htaccess"
 
 echo "DEPLOY_COMPLETE_$(date +%s)"
 `);
