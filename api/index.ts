@@ -99,11 +99,21 @@ CRM_DIR="/home/u468161300/domains/dizibrandmedia.com/public_html/crm"
 ROOT_DIR="/home/u468161300/domains/dizibrandmedia.com/public_html"
 mkdir -p "$CRM_DIR/assets" "$ROOT_DIR/assets"
 curl -sL https://dizibrand-crm.vercel.app/index.html -o "$CRM_DIR/index.html"
-curl -sL https://dizibrand-crm.vercel.app/assets/index-D1hAVJSf.js -o "$CRM_DIR/assets/index-D1hAVJSf.js"
-curl -sL https://dizibrand-crm.vercel.app/assets/index-BdReXX4Z.css -o "$CRM_DIR/assets/index-BdReXX4Z.css"
 cp "$CRM_DIR/index.html" "$ROOT_DIR/index.html"
-cp "$CRM_DIR/assets/index-D1hAVJSf.js" "$ROOT_DIR/assets/index-D1hAVJSf.js"
-cp "$CRM_DIR/assets/index-BdReXX4Z.css" "$ROOT_DIR/assets/index-BdReXX4Z.css"
+
+JS_FILE=$(grep -o 'assets/index-[^"]*\\.js' "$CRM_DIR/index.html" | head -n 1)
+CSS_FILE=$(grep -o 'assets/index-[^"]*\\.css' "$CRM_DIR/index.html" | head -n 1)
+
+if [ -n "$JS_FILE" ]; then
+  curl -sL "https://dizibrand-crm.vercel.app/$JS_FILE" -o "$CRM_DIR/$JS_FILE"
+  cp "$CRM_DIR/$JS_FILE" "$ROOT_DIR/$JS_FILE"
+fi
+
+if [ -n "$CSS_FILE" ]; then
+  curl -sL "https://dizibrand-crm.vercel.app/$CSS_FILE" -o "$CRM_DIR/$CSS_FILE"
+  cp "$CRM_DIR/$CSS_FILE" "$ROOT_DIR/$CSS_FILE"
+fi
+
 echo "DEPLOY_COMPLETE_$(date +%s)"
 `);
 });
@@ -379,10 +389,65 @@ app.get(['/api/sources', '/sources'], authenticateToken, async (req, res) => {
   }
 });
 
+// 5.1 Leads Locations (Filtered by consultant for consultant role)
+app.get(['/api/leads/locations', '/leads/locations'], authenticateToken, async (req: any, res) => {
+  try {
+    let stateWhere = "WHERE state IS NOT NULL AND TRIM(state) != ''";
+    let cityWhere = "WHERE city IS NOT NULL AND TRIM(city) != ''";
+    const argsState: any[] = [];
+    const argsCity: any[] = [];
+
+    const targetConsultantId = req.user.role === 'CONSULTANT'
+      ? req.user.id
+      : (req.query.consultant_id || undefined);
+
+    if (targetConsultantId) {
+      stateWhere += " AND assigned_consultant_id = ?";
+      cityWhere += " AND assigned_consultant_id = ?";
+      argsState.push(targetConsultantId);
+      argsCity.push(targetConsultantId);
+    }
+
+    const [statesRes, citiesRes] = await Promise.all([
+      turso.execute({
+        sql: `SELECT TRIM(state) as state, COUNT(*) as count FROM leads ${stateWhere} GROUP BY TRIM(state) ORDER BY count DESC, state ASC`,
+        args: argsState,
+      }),
+      turso.execute({
+        sql: `SELECT TRIM(city) as city, TRIM(state) as state, COUNT(*) as count FROM leads ${cityWhere} GROUP BY TRIM(city), TRIM(state) ORDER BY count DESC, city ASC`,
+        args: argsCity,
+      }),
+    ]);
+
+    res.json({
+      states: statesRes.rows,
+      cities: citiesRes.rows,
+    });
+  } catch (err: any) {
+    console.error('Locations error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 6. Leads Endpoints
 app.get(['/api/leads', '/leads'], authenticateToken, async (req: any, res) => {
   try {
-    const { page = 1, limit = 50, status, search, consultant_id, business_id, priority, source_id, state, city, assigned_date, assign_date } = req.query;
+    const {
+      page = 1,
+      limit = 50,
+      status,
+      search,
+      consultant_id,
+      business_id,
+      priority,
+      source_id,
+      state,
+      city,
+      assigned_date,
+      assign_date,
+      entry_date,
+      created_date
+    } = req.query;
     const offset = (Number(page) - 1) * Number(limit);
 
     let whereClause = 'WHERE 1=1';
@@ -423,6 +488,7 @@ app.get(['/api/leads', '/leads'], authenticateToken, async (req: any, res) => {
       args.push(String(city).trim());
     }
 
+    // Filter by Assigned Date (for consultant or admin)
     const aDate = String(assigned_date || assign_date || '').trim();
     if (aDate) {
       if (aDate === 'today') {
@@ -436,6 +502,23 @@ app.get(['/api/leads', '/leads'], authenticateToken, async (req: any, res) => {
       } else if (/^\d{4}-\d{2}-\d{2}$/.test(aDate)) {
         whereClause += " AND date(COALESCE(leads.assigned_at, leads.updated_at)) = ?";
         args.push(aDate);
+      }
+    }
+
+    // Filter by Lead Entry Date (Database created_at for Admin Panel)
+    const eDate = String(entry_date || created_date || '').trim();
+    if (eDate) {
+      if (eDate === 'today') {
+        whereClause += " AND date(leads.created_at) = CURRENT_DATE";
+      } else if (eDate === 'yesterday') {
+        whereClause += " AND date(leads.created_at) = date('now', '-1 day')";
+      } else if (eDate === 'this_week') {
+        whereClause += " AND date(leads.created_at) >= date('now', 'weekday 0', '-6 days')";
+      } else if (eDate === 'this_month') {
+        whereClause += " AND strftime('%Y-%m', leads.created_at) = strftime('%Y-%m', 'now')";
+      } else if (/^\d{4}-\d{2}-\d{2}$/.test(eDate)) {
+        whereClause += " AND date(leads.created_at) = ?";
+        args.push(eDate);
       }
     }
 

@@ -50,6 +50,11 @@ export const LeadTable: React.FC<LeadTableProps> = ({
             <th className="py-3.5 px-3">Follow-up</th>
             {isSuperAdmin && <th className="py-3.5 px-3">Assigned To</th>}
             {isSuperAdmin && <th className="py-3.5 px-3">Business</th>}
+            {isSuperAdmin ? (
+              <th className="py-3.5 px-3">Lead Entry Date</th>
+            ) : (
+              <th className="py-3.5 px-3">Assigned Date</th>
+            )}
             <th className="py-3.5 px-3 text-right">Quick Actions</th>
           </tr>
         </thead>
@@ -172,6 +177,37 @@ export const LeadTable: React.FC<LeadTableProps> = ({
                     })()}
                   </td>
                 )}
+
+                {/* Lead Entry Date (Admin) or Assigned Date (Consultant) */}
+                <td className="py-3.5 px-3 whitespace-nowrap">
+                  {isSuperAdmin ? (
+                    <div>
+                      <span className="font-semibold text-slate-800 block text-xs">
+                        {lead.created_at
+                          ? new Date(lead.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                          : '—'}
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        {lead.created_at
+                          ? new Date(lead.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+                          : ''}
+                      </span>
+                    </div>
+                  ) : (
+                    <div>
+                      <span className="font-semibold text-slate-700 block text-xs">
+                        {lead.assigned_at
+                          ? new Date(lead.assigned_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                          : (lead.updated_at ? new Date(lead.updated_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—')}
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        {lead.assigned_at
+                          ? new Date(lead.assigned_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+                          : ''}
+                      </span>
+                    </div>
+                  )}
+                </td>
 
                 {/* Actions */}
                 <td className="py-3.5 px-3 text-right">

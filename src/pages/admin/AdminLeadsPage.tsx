@@ -32,7 +32,7 @@ export const AdminLeadsPage: React.FC = () => {
   const [unassignedFilter, setUnassignedFilter] = useState('');
   const [stateFilter, setStateFilter] = useState('');
   const [cityFilter, setCityFilter] = useState('');
-  const [assignedDateFilter, setAssignedDateFilter] = useState('');
+  const [entryDateFilter, setEntryDateFilter] = useState('');
 
   // Dropdown auxiliary data
   const [consultants, setConsultants] = useState<User[]>([]);
@@ -89,7 +89,7 @@ export const AdminLeadsPage: React.FC = () => {
         business_id: businessFilter === 'unassigned' ? 'unassigned' : (businessFilter ? Number(businessFilter) : undefined),
         state: stateFilter || undefined,
         city: cityFilter || undefined,
-        assigned_date: assignedDateFilter || undefined,
+        entry_date: entryDateFilter || undefined,
       });
 
       setLeads(res.leads);
@@ -107,7 +107,7 @@ export const AdminLeadsPage: React.FC = () => {
 
   useEffect(() => {
     fetchLeads(1);
-  }, [search, statusFilter, priorityFilter, sourceFilter, consultantFilter, businessFilter, unassignedFilter, stateFilter, cityFilter, assignedDateFilter]);
+  }, [search, statusFilter, priorityFilter, sourceFilter, consultantFilter, businessFilter, unassignedFilter, stateFilter, cityFilter, entryDateFilter]);
 
   const handleStateChange = (selectedState: string) => {
     setStateFilter(selectedState);
@@ -148,7 +148,7 @@ export const AdminLeadsPage: React.FC = () => {
       ...(businessFilter ? { internal_business_id: businessFilter } : {}),
       ...(stateFilter ? { state: stateFilter } : {}),
       ...(cityFilter ? { city: cityFilter } : {}),
-      ...(assignedDateFilter ? { assigned_date: assignedDateFilter } : {}),
+      ...(entryDateFilter ? { entry_date: entryDateFilter } : {}),
     });
     window.location.href = `/api/exports/leads/csv?${params.toString()}`;
     toast.success('Lead database export initiated!');
@@ -164,7 +164,7 @@ export const AdminLeadsPage: React.FC = () => {
     setUnassignedFilter('');
     setStateFilter('');
     setCityFilter('');
-    setAssignedDateFilter('');
+    setEntryDateFilter('');
   };
 
   return (
@@ -287,8 +287,9 @@ export const AdminLeadsPage: React.FC = () => {
         cityFilter={cityFilter}
         onCityChange={setCityFilter}
         citiesList={locations.cities}
-        assignedDateFilter={assignedDateFilter}
-        onAssignedDateChange={setAssignedDateFilter}
+        dateFilterLabel="Lead Entry Date"
+        dateFilter={entryDateFilter}
+        onDateChange={setEntryDateFilter}
         onReset={handleResetFilters}
       >
         {/* Admin specific filters */}

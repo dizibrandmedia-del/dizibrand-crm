@@ -19,6 +19,9 @@ interface SearchFilterBarProps {
   citiesList?: { city: string; state?: string; count?: number }[];
   assignedDateFilter?: string;
   onAssignedDateChange?: (val: string) => void;
+  dateFilter?: string;
+  onDateChange?: (val: string) => void;
+  dateFilterLabel?: 'Lead Entry Date' | 'Lead Assign Date' | string;
   onReset?: () => void;
   placeholder?: string;
   children?: React.ReactNode;
@@ -43,12 +46,20 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
   citiesList = [],
   assignedDateFilter,
   onAssignedDateChange,
+  dateFilter,
+  onDateChange,
+  dateFilterLabel = 'Lead Assign Date',
   onReset,
   placeholder = 'Search by company, CIN, contact, mobile, or city...',
   children,
   isDark = false,
 }) => {
   const [isCustomDate, setIsCustomDate] = useState(false);
+
+  // Unify date filter prop
+  const activeDateValue = dateFilter ?? assignedDateFilter ?? '';
+  const handleDateChange = onDateChange ?? onAssignedDateChange;
+  const isEntryDate = dateFilterLabel.toLowerCase().includes('entry') || dateFilterLabel.toLowerCase().includes('created');
 
   // Filter cities by state if state is selected
   const availableCities = React.useMemo(() => {
@@ -59,7 +70,7 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
   }, [stateFilter, citiesList]);
 
   // Is assigned date custom date format YYYY-MM-DD
-  const isDatePattern = assignedDateFilter && /^\d{4}-\d{2}-\d{2}$/.test(assignedDateFilter);
+  const isDatePattern = activeDateValue && /^\d{4}-\d{2}-\d{2}$/.test(activeDateValue);
 
   const containerClasses = isDark
     ? 'bg-slate-900/90 border-slate-800 text-slate-100 shadow-xl'
@@ -157,7 +168,7 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
           )}
 
           {/* State Filter */}
-          {onStateChange && statesList.length > 0 && (
+          {onStateChange && (
             <select
               value={stateFilter || ''}
               onChange={(e) => {
@@ -174,7 +185,7 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
                 stateFilter ? activeSelectClasses : selectClasses
               }`}
             >
-              <option value="">All States ({statesList.length})</option>
+              <option value="">{statesList.length > 0 ? `All States (${statesList.length})` : 'All States'}</option>
               {statesList.map((s) => (
                 <option key={s.state} value={s.state}>
                   {s.state} {s.count !== undefined ? `(${s.count})` : ''}
@@ -193,7 +204,7 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
               }`}
             >
               <option value="">
-                {stateFilter ? `All Cities in ${stateFilter}` : `All Cities (${citiesList.length})`}
+                {stateFilter ? `All Cities in ${stateFilter}` : (citiesList.length > 0 ? `All Cities (${citiesList.length})` : 'All Cities')}
               </option>
               {availableCities.map((c) => (
                 <option key={`${c.state || ''}-${c.city}`} value={c.city}>
@@ -203,33 +214,33 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
             </select>
           )}
 
-          {/* Lead Assign Date Filter */}
-          {onAssignedDateChange && (
+          {/* Date Filter (Lead Entry Date for Admin / Lead Assign Date for Consultant) */}
+          {handleDateChange && (
             <div className="flex items-center gap-1">
               <select
-                value={isDatePattern ? 'custom' : (assignedDateFilter || '')}
+                value={isDatePattern ? 'custom' : (activeDateValue || '')}
                 onChange={(e) => {
                   const val = e.target.value;
                   if (val === 'custom') {
                     setIsCustomDate(true);
                     if (!isDatePattern) {
                       const today = new Date().toISOString().split('T')[0];
-                      onAssignedDateChange(today);
+                      handleDateChange(today);
                     }
                   } else {
                     setIsCustomDate(false);
-                    onAssignedDateChange(val);
+                    handleDateChange(val);
                   }
                 }}
                 className={`px-3 py-2 text-xs font-medium border rounded-xl focus:outline-none focus:ring-2 cursor-pointer transition ${
-                  assignedDateFilter ? activeSelectClasses : selectClasses
+                  activeDateValue ? activeSelectClasses : selectClasses
                 }`}
               >
-                <option value="">All Assign Dates</option>
-                <option value="today">📅 Assigned Today</option>
-                <option value="yesterday">Assigned Yesterday</option>
-                <option value="this_week">Assigned This Week</option>
-                <option value="this_month">Assigned This Month</option>
+                <option value="">{isEntryDate ? 'All Entry Dates' : 'All Assign Dates'}</option>
+                <option value="today">📅 {isEntryDate ? 'Added Today' : 'Assigned Today'}</option>
+                <option value="yesterday">{isEntryDate ? 'Added Yesterday' : 'Assigned Yesterday'}</option>
+                <option value="this_week">{isEntryDate ? 'Added This Week' : 'Assigned This Week'}</option>
+                <option value="this_month">{isEntryDate ? 'Added This Month' : 'Assigned This Month'}</option>
                 <option value="custom">Pick Specific Date...</option>
               </select>
 
@@ -237,8 +248,8 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
                 <div className="flex items-center">
                   <input
                     type="date"
-                    value={isDatePattern ? assignedDateFilter : new Date().toISOString().split('T')[0]}
-                    onChange={(e) => onAssignedDateChange(e.target.value)}
+                    value={isDatePattern ? activeDateValue : new Date().toISOString().split('T')[0]}
+                    onChange={(e) => handleDateChange(e.target.value)}
                     className={`px-2.5 py-1.5 text-xs font-semibold border rounded-xl focus:outline-none focus:ring-2 transition ${activeSelectClasses}`}
                   />
                 </div>

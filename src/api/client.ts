@@ -102,6 +102,8 @@ export const api = {
       city?: string;
       state?: string;
       assigned_date?: string;
+      entry_date?: string;
+      created_date?: string;
       date_from?: string;
       date_to?: string;
       sort_by?: string;
@@ -130,11 +132,15 @@ export const api = {
         proposals: Proposal[];
         deal?: Deal;
       }>(`/leads/${id}`),
-    getLocations: () =>
-      request<{
+    getLocations: (params?: { consultant_id?: number | string }) => {
+      const query = new URLSearchParams();
+      if (params?.consultant_id) query.append('consultant_id', String(params.consultant_id));
+      const qs = query.toString();
+      return request<{
         states: { state: string; count: number }[];
         cities: { city: string; state: string; count: number }[];
-      }>('/leads/locations'),
+      }>(`/leads/locations${qs ? `?${qs}` : ''}`);
+    },
     create: (leadData: Partial<Lead> & { initial_remark?: string; tag_ids?: number[] }) =>
       request<{ message: string; lead_id: string; id: number }>('/leads', {
         method: 'POST',

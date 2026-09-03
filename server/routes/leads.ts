@@ -57,6 +57,36 @@ export function calculateLeadScore(data: {
   return { score, band };
 }
 
+// 0. Get distinct States and Cities (Filtered for consultant)
+leadsRouter.get('/locations', authMiddleware, (req: AuthRequest, res) => {
+  try {
+    const user = req.user!;
+    const consultantId = user.role === 'CONSULTANT' ? user.id : (req.query.consultant_id ? Number(req.query.consultant_id) : undefined);
+
+    let stateSql = "SELECT TRIM(state) as state, COUNT(*) as count FROM leads WHERE state IS NOT NULL AND TRIM(state) != ''";
+    let citySql = "SELECT TRIM(city) as city, TRIM(state) as state, COUNT(*) as count FROM leads WHERE city IS NOT NULL AND TRIM(city) != ''";
+    const stateParams: any[] = [];
+    const cityParams: any[] = [];
+
+    if (consultantId) {
+      stateSql += " AND assigned_consultant_id = ?";
+      citySql += " AND assigned_consultant_id = ?";
+      stateParams.push(consultantId);
+      cityParams.push(consultantId);
+    }
+
+    stateSql += " GROUP BY TRIM(state) ORDER BY count DESC, state ASC";
+    citySql += " GROUP BY TRIM(city), TRIM(state) ORDER BY count DESC, city ASC";
+
+    const states = db.prepare(stateSql).all(...stateParams);
+    const cities = db.prepare(citySql).all(...cityParams);
+
+    res.json({ states, cities });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to fetch locations' });
+  }
+});
+
 // 1. Get Leads (List with search, filters, pagination & strict RBAC)
 leadsRouter.get('/', authMiddleware, (req: AuthRequest, res) => {
   try {
@@ -78,6 +108,8 @@ leadsRouter.get('/', authMiddleware, (req: AuthRequest, res) => {
       city,
       assigned_date,
       assign_date,
+      entry_date,
+      created_date,
       followup_filter, // 'today', 'overdue', 'upcoming'
       sort_by = 'created_at',
       sort_order = 'DESC'
@@ -110,6 +142,22 @@ leadsRouter.get('/', authMiddleware, (req: AuthRequest, res) => {
       } else if (/^\d{4}-\d{2}-\d{2}$/.test(aDate)) {
         conditions.push("date(COALESCE(leads.assigned_at, leads.updated_at)) = ?");
         params.push(aDate);
+      }
+    }
+
+    const eDate = String(entry_date || created_date || '').trim();
+    if (eDate) {
+      if (eDate === 'today') {
+        conditions.push("date(leads.created_at) = date('now')");
+      } else if (eDate === 'yesterday') {
+        conditions.push("date(leads.created_at) = date('now', '-1 day')");
+      } else if (eDate === 'this_week') {
+        conditions.push("date(leads.created_at) >= date('now', 'weekday 0', '-6 days')");
+      } else if (eDate === 'this_month') {
+        conditions.push("strftime('%Y-%m', leads.created_at) = strftime('%Y-%m', 'now')");
+      } else if (/^\d{4}-\d{2}-\d{2}$/.test(eDate)) {
+        conditions.push("date(leads.created_at) = ?");
+        params.push(eDate);
       }
     }
 

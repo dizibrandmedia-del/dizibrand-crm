@@ -88,6 +88,16 @@ export const ConsultantLeadsPage: React.FC = () => {
     }
   };
 
+  const handleStateChange = (selectedState: string) => {
+    setStateFilter(selectedState);
+    if (selectedState && cityFilter) {
+      const cityMatches = locations.cities.some(
+        (c) => c.state?.toLowerCase() === selectedState.toLowerCase() && c.city.toLowerCase() === cityFilter.toLowerCase()
+      );
+      if (!cityMatches) setCityFilter('');
+    }
+  };
+
   useEffect(() => {
     fetchAux();
   }, []);
@@ -118,7 +128,7 @@ export const ConsultantLeadsPage: React.FC = () => {
               className={`p-1.5 rounded-lg transition ${
                 viewMode === 'cards' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
               }`}
-              title="Card View (Mobile Optimized)"
+              title="Card Grid View"
             >
               <LayoutGrid className="w-4 h-4" />
             </button>
@@ -155,11 +165,12 @@ export const ConsultantLeadsPage: React.FC = () => {
         onSourceChange={setSourceFilter}
         sourcesList={sources}
         stateFilter={stateFilter}
-        onStateChange={setStateFilter}
+        onStateChange={handleStateChange}
         statesList={locations.states}
         cityFilter={cityFilter}
         onCityChange={setCityFilter}
         citiesList={locations.cities}
+        dateFilterLabel="Lead Assign Date"
         assignedDateFilter={assignedDateFilter}
         onAssignedDateChange={setAssignedDateFilter}
         onReset={() => {
