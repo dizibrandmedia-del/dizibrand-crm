@@ -2,41 +2,15 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Lock, Mail, ArrowRight, ShieldCheck, UserCheck, Sparkles } from 'lucide-react';
-
-const CONSULTANT_PRESETS = [
-  { name: 'Shraddha', email: 'shraddha@dizibrandmedia.com' },
-  { name: 'Vansh Gupta', email: 'vansh@dizibrandmedia.com' },
-  { name: 'Amisha', email: 'amisha@dizibrandmedia.com' },
-  { name: 'Jyoti', email: 'jyoti@fyntrust.in' },
-  { name: 'Aditya Gupta', email: 'aditya@dizibrandmedia.com' },
-  { name: 'Sneha Gupta', email: 'sneha@dizibrand.com' },
-  { name: 'Priya', email: 'priya@dizibrand.com' },
-];
+import { Lock, Mail, ArrowRight, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [roleMode, setRoleMode] = useState<'admin' | 'consultant'>('consultant');
-  const [email, setEmail] = useState('shraddha@dizibrandmedia.com');
-  const [password, setPassword] = useState('Consultant@123456');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-
-  const handleRoleSwitch = (mode: 'admin' | 'consultant') => {
-    setRoleMode(mode);
-    if (mode === 'admin') {
-      setEmail('admin@dizibrand.com');
-      setPassword('Admin@123456');
-    } else {
-      setEmail('shraddha@dizibrandmedia.com');
-      setPassword('Consultant@123456');
-    }
-  };
-
-  const handleSelectPreset = (presetEmail: string) => {
-    setEmail(presetEmail);
-    setPassword('Consultant@123456');
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,7 +29,7 @@ export const LoginPage: React.FC = () => {
         navigate('/consultant/dashboard');
       }
     } catch (err: any) {
-      toast.error(err.message || 'Invalid credentials');
+      toast.error(err.message || 'Invalid email or password');
     } finally {
       setIsLoading(false);
     }
@@ -80,119 +54,88 @@ export const LoginPage: React.FC = () => {
       </div>
 
       <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-md relative z-10 px-4">
-        <div className="bg-slate-900/90 border border-slate-800 backdrop-blur-xl py-7 px-6 sm:px-8 shadow-2xl rounded-3xl space-y-5">
-          {/* Role Portal Toggle */}
-          <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-950 rounded-2xl border border-slate-800">
-            <button
-              type="button"
-              onClick={() => handleRoleSwitch('consultant')}
-              className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-bold transition ${
-                roleMode === 'consultant'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <UserCheck className="w-4 h-4" />
-              <span>Consultant Panel</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleRoleSwitch('admin')}
-              className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-bold transition ${
-                roleMode === 'admin'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <ShieldCheck className="w-4 h-4" />
-              <span>Super Admin</span>
-            </button>
+        <div className="bg-slate-900/90 border border-slate-800 backdrop-blur-xl py-8 px-6 sm:px-8 shadow-2xl rounded-3xl space-y-6">
+          <div className="text-center pb-1 border-b border-slate-800/80">
+            <h3 className="text-base font-bold text-white">Sign In to Your Account</h3>
+            <p className="text-xs text-slate-400 mt-1">Enter your credentials to access your CRM dashboard</p>
           </div>
-
-          {/* Quick Consultant Picker Chips */}
-          {roleMode === 'consultant' && (
-            <div className="p-3 bg-slate-950/80 rounded-2xl border border-slate-800/80 space-y-1.5">
-              <div className="flex items-center justify-between text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                <span className="flex items-center gap-1">
-                  <Sparkles className="w-3 h-3 text-indigo-400" />
-                  Quick Consultant Login:
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {CONSULTANT_PRESETS.map((c) => (
-                  <button
-                    key={c.email}
-                    type="button"
-                    onClick={() => handleSelectPreset(c.email)}
-                    className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition cursor-pointer ${
-                      email.toLowerCase() === c.email.toLowerCase()
-                        ? 'bg-indigo-600 text-white shadow-sm'
-                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
-                    }`}
-                  >
-                    {c.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1">
-                Email Address
+              <label htmlFor="email" className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
+                Work Email
               </label>
               <div className="relative">
-                <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
+                <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
                 <input
+                  id="email"
+                  name="email"
                   type="email"
+                  autoComplete="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder={roleMode === 'admin' ? 'admin@dizibrand.com' : 'consultant@dizibrand.com'}
-                  className="w-full pl-10 pr-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                  placeholder="name@dizibrandmedia.com"
+                  className="w-full pl-10 pr-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium transition"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1">
+              <label htmlFor="password" className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
                 Password
               </label>
               <div className="relative">
-                <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
+                <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
                 <input
-                  type="password"
+                  id="password"
+                  name="password"
+                  type={showPassword ? 'text' : 'password'}
+                  autoComplete="current-password"
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full pl-10 pr-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                  placeholder="••••••••••••"
+                  className="w-full pl-10 pr-10 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium transition"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3.5 top-3 text-slate-500 hover:text-slate-300 transition focus:outline-none cursor-pointer"
+                  tabIndex={-1}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? (
+                    <EyeOff className="w-4 h-4" />
+                  ) : (
+                    <Eye className="w-4 h-4" />
+                  )}
+                </button>
               </div>
             </div>
 
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-xs font-extrabold text-white bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-600/30 transition duration-150 disabled:opacity-50 active:scale-95 cursor-pointer"
+              className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-xs font-extrabold text-white bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-600/30 transition duration-150 disabled:opacity-50 active:scale-95 cursor-pointer mt-2"
             >
               {isLoading ? (
                 <span>Signing in...</span>
               ) : (
                 <>
-                  <span>
-                    Sign In as {roleMode === 'admin' ? 'Super Admin' : 'Business Consultant'}
-                  </span>
+                  <span>Sign In</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
             </button>
           </form>
+
+          <div className="pt-2 flex items-center justify-center gap-2 text-[11px] text-slate-500 font-medium">
+            <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
+            <span>Encrypted & Authorized CRM Portal</span>
+          </div>
         </div>
       </div>
     </div>
   );
 };
-
