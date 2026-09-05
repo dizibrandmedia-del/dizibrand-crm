@@ -41,18 +41,18 @@ export const StatCard: React.FC<StatCardProps> = ({
   return (
     <div
       onClick={onClick}
-      className={`stitch-card relative overflow-hidden rounded-xl p-5 border border-[#232D42] bg-[#151A25] transition-all duration-200 ${
+      className={`stitch-card relative overflow-hidden rounded-xl p-4 sm:p-5 border border-[#232D42] bg-[#151A25] transition-all duration-200 ${
         hasLuminescentStroke ? 'stitch-luminescent-border shadow-lg shadow-blue-500/5' : ''
       } ${
         onClick ? 'cursor-pointer hover:bg-[#1A2232] hover:border-[#334155] hover:-translate-y-0.5' : ''
       } ${className}`}
     >
       <div className="flex items-center justify-between">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">{title}</span>
-        <div className={`p-2 rounded-lg ${style.bg}`}>{icon}</div>
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 truncate mr-1">{title}</span>
+        <div className={`p-1.5 sm:p-2 rounded-lg shrink-0 ${style.bg}`}>{icon}</div>
       </div>
-      <div className="mt-3 flex items-baseline justify-between gap-2">
-        <span className="text-2xl sm:text-3xl font-sora font-semibold text-white tracking-tight tabular-nums">
+      <div className="mt-2.5 sm:mt-3 flex items-baseline justify-between gap-1.5 sm:gap-2">
+        <span className="text-xl sm:text-2xl xl:text-3xl font-sora font-semibold text-white tracking-tight tabular-nums truncate">
           {value}
         </span>
         {trend && (

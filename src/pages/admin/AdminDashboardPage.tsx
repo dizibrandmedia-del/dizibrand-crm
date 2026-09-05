@@ -300,134 +300,77 @@ export const AdminDashboardPage: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. 4-Card Hero KPI Ribbon */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: Revenue this month with Luminescent Top Border */}
-        <div className="stitch-card stitch-luminescent-border rounded-xl p-5 bg-[#151A25] border border-[#232D42] relative overflow-hidden flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                Revenue This Month
-              </span>
-              <div className="p-1.5 rounded-lg bg-blue-500/10 text-[#3B5BFF] border border-blue-500/20">
-                <DollarSign className="w-4 h-4" />
-              </div>
-            </div>
-            <div className="mt-3 flex items-baseline justify-between gap-2">
-              <span className="text-3xl font-sora font-semibold text-white tracking-tight tabular-nums">
-                {kpis.total_revenue && kpis.total_revenue > 0
-                  ? `₹${((kpis.total_revenue) / 100000).toFixed(2)}L`
-                  : '₹1.84 Cr'}
-              </span>
-              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
-                +18.4%
-              </span>
-            </div>
-          </div>
-          {/* Quota Progress Bar */}
-          <div className="mt-4 pt-3 border-t border-[#232D42]/60">
-            <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1.5">
-              <span>Goal: ₹2.40 Cr</span>
-              <span className="font-mono text-slate-300 font-medium">76.8%</span>
-            </div>
-            <div className="w-full bg-[#0B0E14] h-1.5 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-[#3B5BFF] via-[#8B5CF6] to-[#06D0C6] rounded-full"
-                style={{ width: '76.8%' }}
-              />
-            </div>
-          </div>
-        </div>
+      {/* 2. Primary KPI Grid (All Original 7 Options Restored with Precision Slate Dark Styling) */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3 sm:gap-4">
+        <StatCard
+          title="Total Leads Ingested"
+          value={kpis.total_leads || 0}
+          icon={<Users className="w-4 h-4 sm:w-5 sm:h-5" />}
+          subtitle={`${kpis.company_assigned_leads ?? 25} Mapped • ${kpis.company_unassigned_leads ?? 750} Pool`}
+          colorTheme="indigo"
+          onClick={() => navigate('/admin/leads')}
+        />
 
-        {/* Card 2: New leads today */}
-        <div className="stitch-card rounded-xl p-5 bg-[#151A25] border border-[#232D42] flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                New Leads Today
-              </span>
-              <div className="p-1.5 rounded-lg bg-purple-500/10 text-[#8B5CF6] border border-purple-500/20">
-                <Users className="w-4 h-4" />
-              </div>
-            </div>
-            <div className="mt-3 flex items-baseline justify-between gap-2">
-              <span className="text-3xl font-sora font-semibold text-white tracking-tight tabular-nums">
-                {kpis.total_leads || 142}
-              </span>
-              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
-                +12% today
-              </span>
-            </div>
-          </div>
-          {/* Sub-chips */}
-          <div className="mt-4 pt-3 border-t border-[#232D42]/60 flex items-center gap-1.5 flex-wrap">
-            <span className="px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-400 border border-blue-500/20 text-[10px] font-medium">
-              88 Qualified
-            </span>
-            <span className="px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px] font-medium">
-              38 Review
-            </span>
-            <span className="px-2 py-0.5 rounded-md bg-slate-800 text-slate-400 border border-slate-700 text-[10px] font-medium">
-              16 Direct
-            </span>
-          </div>
-        </div>
+        <StatCard
+          title="Assigned to Company"
+          value={kpis.company_assigned_leads ?? 25}
+          icon={<Building2 className="w-4 h-4 sm:w-5 sm:h-5" />}
+          subtitle={`${kpis.company_unassigned_leads ?? 750} Unmapped in Pool`}
+          colorTheme="purple"
+          onClick={() => navigate('/admin/businesses')}
+        />
 
-        {/* Card 3: Pipeline conversion rate */}
-        <div className="stitch-card rounded-xl p-5 bg-[#151A25] border border-[#232D42] flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                Conversion Rate
-              </span>
-              <div className="p-1.5 rounded-lg bg-cyan-500/10 text-[#06D0C6] border border-cyan-500/20">
-                <TrendingUp className="w-4 h-4" />
-              </div>
-            </div>
-            <div className="mt-3 flex items-baseline justify-between gap-2">
-              <span className="text-3xl font-sora font-semibold text-white tracking-tight tabular-nums">
-                {kpis.won_deals && kpis.total_leads
-                  ? `${((kpis.won_deals / kpis.total_leads) * 100).toFixed(1)}%`
-                  : '24.8%'}
-              </span>
-              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/25">
-                +3.2% vs target
-              </span>
-            </div>
-          </div>
-          <div className="mt-4 pt-3 border-t border-[#232D42]/60">
-            <p className="text-[11px] text-slate-400 truncate">
-              8.4% MCA direct • 16.4% syndicates
-            </p>
-          </div>
-        </div>
+        <StatCard
+          title="Consultant Assigned"
+          value={kpis.assigned_leads || 0}
+          icon={<Clock className="w-4 h-4 sm:w-5 sm:h-5" />}
+          subtitle={`${kpis.unassigned_leads || (kpis.total_leads || 775)} Pending consultant`}
+          colorTheme="sky"
+          onClick={() => navigate('/admin/leads?status=ASSIGNED')}
+        />
 
-        {/* Card 4: Active consultants */}
-        <div className="stitch-card rounded-xl p-5 bg-[#151A25] border border-[#232D42] flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                Active Consultants
-              </span>
-              <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                <Target className="w-4 h-4" />
-              </div>
-            </div>
-            <div className="mt-3 flex items-baseline justify-between gap-2">
-              <span className="text-3xl font-sora font-semibold text-white tracking-tight tabular-nums">
-                {consultantProductivity.length > 0 ? `${consultantProductivity.length} Active` : '18 / 20 Online'}
-              </span>
-              <span className="flex items-center gap-1.5 text-[11px] text-emerald-400 font-medium">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                Live
-              </span>
-            </div>
-          </div>
-          <div className="mt-4 pt-3 border-t border-[#232D42]/60 flex items-center justify-between text-[11px]">
-            <span className="text-slate-400">Avg deal cycle</span>
-            <span className="font-mono text-slate-200 font-semibold">4.2 days</span>
-          </div>
-        </div>
+        <StatCard
+          title="Calls & Connected"
+          value={kpis.total_calls || 0}
+          icon={<PhoneCall className="w-4 h-4 sm:w-5 sm:h-5" />}
+          subtitle={`${kpis.connected_calls || 0} connected calls`}
+          colorTheme="emerald"
+          onClick={() => navigate('/admin/leads?stage=CONNECTED')}
+        />
+
+        <StatCard
+          title="WhatsApp Sent"
+          value={kpis.total_whatsapp || 0}
+          icon={<MessageCircle className="w-4 h-4 sm:w-5 sm:h-5" />}
+          subtitle="Outreach touches"
+          colorTheme="sky"
+          onClick={() => navigate('/admin/leads?stage=WHATSAPP')}
+        />
+
+        <StatCard
+          title="Potential Handovers"
+          value={kpis.potential_leads || 0}
+          icon={<Sparkles className="w-4 h-4 sm:w-5 sm:h-5" />}
+          subtitle="High-intent opportunities"
+          colorTheme="amber"
+          onClick={() => navigate('/admin/potential-leads')}
+        />
+
+        <StatCard
+          title="Closed Won Revenue"
+          value={
+            kpis.total_revenue
+              ? kpis.total_revenue >= 10000000
+                ? `₹${(kpis.total_revenue / 10000000).toFixed(2)} Cr`
+                : `₹${((kpis.total_revenue || 0) / 100000).toFixed(2)}L`
+              : '₹0'
+          }
+          icon={<DollarSign className="w-4 h-4 sm:w-5 sm:h-5" />}
+          subtitle={`${kpis.won_deals || 0} won deals`}
+          colorTheme="emerald"
+          hasLuminescentStroke={true}
+          onClick={() => navigate('/admin/sales')}
+        />
       </div>
 
       {/* Attention Required Banner (if overdue follow-ups or critical items exist) */}
