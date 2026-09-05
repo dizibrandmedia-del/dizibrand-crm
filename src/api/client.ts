@@ -23,7 +23,11 @@ import {
   LeadActivity,
 } from '../types/index.js';
 
-const API_BASE = ((import.meta as any).env?.VITE_API_BASE_URL as string) || '/api';
+const API_BASE =
+  ((import.meta as any).env?.VITE_API_BASE_URL as string) ||
+  (typeof window !== 'undefined' && window.location.hostname.includes('dizibrandmedia.com')
+    ? 'https://dizibrand-crm.vercel.app/api'
+    : '/api');
 
 function getAuthToken(): string | null {
   return localStorage.getItem('dizibrand_token') || localStorage.getItem('token');
