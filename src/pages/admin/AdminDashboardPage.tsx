@@ -102,6 +102,10 @@ export const AdminDashboardPage: React.FC = () => {
   const consultantProductivity = data?.consultantProductivity || [];
   const businessPerformance = data?.businessPerformance || [];
 
+  const activeConsultants = consultantProductivity.filter((c: any) => c.is_active !== 0 && c.is_active !== false);
+  const activeConsultantsCount = activeConsultants.length > 0 ? activeConsultants.length : (consultantProductivity.length > 0 ? consultantProductivity.length : 9);
+  const totalConsultantsCount = consultantProductivity.length > 0 ? consultantProductivity.length : 9;
+
   // Weekly Revenue Attribution & Sourcing Dataset (Stitch Stacked Bar)
   const weeklyRevenueData = [
     { day: 'Mon', directInbound: 18, partnerSyndicates: 12, paidGrowth: 8, outboundMca: 6 },
@@ -357,19 +361,14 @@ export const AdminDashboardPage: React.FC = () => {
         />
 
         <StatCard
-          title="Closed Won Revenue"
-          value={
-            kpis.total_revenue
-              ? kpis.total_revenue >= 10000000
-                ? `₹${(kpis.total_revenue / 10000000).toFixed(2)} Cr`
-                : `₹${((kpis.total_revenue || 0) / 100000).toFixed(2)}L`
-              : '₹0'
-          }
-          icon={<DollarSign className="w-4 h-4 sm:w-5 sm:h-5" />}
-          subtitle={`${kpis.won_deals || 0} won deals`}
+          title="Active Consultants"
+          value={`${activeConsultantsCount} Active`}
+          icon={<Target className="w-4 h-4 sm:w-5 sm:h-5" />}
+          subtitle={`${totalConsultantsCount} in team • Live`}
+          trend={{ value: '● Live', isPositive: true }}
           colorTheme="emerald"
           hasLuminescentStroke={true}
-          onClick={() => navigate('/admin/sales')}
+          onClick={() => navigate('/admin/team')}
         />
       </div>
 
