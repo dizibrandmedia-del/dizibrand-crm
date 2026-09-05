@@ -3,48 +3,94 @@
 @tailwind utilities;
 
 @layer base {
+  html {
+    color-scheme: dark;
+  }
   body {
-    @apply font-sans bg-slate-50 text-slate-900 antialiased selection:bg-indigo-500 selection:text-white;
+    @apply font-sans bg-[#0B0E14] text-slate-100 antialiased selection:bg-blue-600 selection:text-white;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
   }
 }
 
-/* Custom modern scrollbar */
+/* Custom modern sleek dark scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: #0B0E14;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.5);
+  background: #232D42;
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(100, 116, 139, 0.8);
+  background: #334155;
 }
 
-/* Glassmorphism helpers */
+/* Stitch Precision Slate Dark card and glow helpers */
+.stitch-card {
+  background: #151A25;
+  border: 1px solid #232D42;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.stitch-card:hover {
+  background: #1A2232;
+  border-color: #334155;
+  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.45);
+}
+
+.stitch-luminescent-border {
+  position: relative;
+}
+
+.stitch-luminescent-border::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #3B5BFF 0%, #8B5CF6 50%, #06D0C6 100%);
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+}
+
+.stitch-glow-cyan {
+  box-shadow: 0 0 20px -5px rgba(6, 208, 198, 0.3);
+}
+
+.stitch-glow-blue {
+  box-shadow: 0 0 20px -5px rgba(59, 91, 255, 0.3);
+}
+
+/* Glassmorphism helpers for dark mode */
 .glass-panel {
-  background: rgba(255, 255, 255, 0.85);
+  background: rgba(21, 26, 37, 0.85);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(226, 232, 240, 0.8);
+  border: 1px solid #232D42;
 }
 
 .glass-card {
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(21, 26, 37, 0.95);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
+  border: 1px solid #232D42;
 }
 
-/* Pulse badge animation for hot leads & overdue followups */
+/* Pulse badge animation for hot leads & status indicators */
 @keyframes pulse-ring {
   0% { transform: scale(0.95); opacity: 0.8; }
-  50% { transform: scale(1.08); opacity: 0.3; }
+  50% { transform: scale(1.15); opacity: 0.3; }
   100% { transform: scale(0.95); opacity: 0.8; }
 }
 
 .animate-pulse-ring {
   animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
 }

@@ -10,6 +10,7 @@ interface StatCardProps {
     isPositive?: boolean;
   };
   colorTheme?: 'indigo' | 'emerald' | 'amber' | 'rose' | 'sky' | 'purple' | 'slate';
+  hasLuminescentStroke?: boolean;
   onClick?: () => void;
   className?: string;
 }
@@ -21,45 +22,52 @@ export const StatCard: React.FC<StatCardProps> = ({
   subtitle,
   trend,
   colorTheme = 'indigo',
+  hasLuminescentStroke = false,
   onClick,
   className = '',
 }) => {
-  const themeStyles: Record<string, { bg: string; iconBg: string; text: string }> = {
-    indigo: { bg: 'bg-indigo-50/50 hover:border-indigo-200', iconBg: 'bg-indigo-50 text-indigo-600', text: 'text-indigo-600' },
-    emerald: { bg: 'bg-emerald-50/40 hover:border-emerald-200', iconBg: 'bg-emerald-50 text-emerald-600', text: 'text-emerald-600' },
-    amber: { bg: 'bg-amber-50/40 hover:border-amber-200', iconBg: 'bg-amber-50 text-amber-600', text: 'text-amber-600' },
-    rose: { bg: 'bg-rose-50/40 hover:border-rose-200', iconBg: 'bg-rose-50 text-rose-600', text: 'text-rose-600' },
-    sky: { bg: 'bg-sky-50/40 hover:border-sky-200', iconBg: 'bg-sky-50 text-sky-600', text: 'text-sky-600' },
-    purple: { bg: 'bg-purple-50/40 hover:border-purple-200', iconBg: 'bg-purple-50 text-purple-600', text: 'text-purple-600' },
-    slate: { bg: 'bg-slate-50 hover:border-slate-300', iconBg: 'bg-slate-100 text-slate-700', text: 'text-slate-700' },
+  const iconThemeStyles: Record<string, { bg: string; text: string }> = {
+    indigo: { bg: 'bg-blue-500/10 text-blue-400 border border-blue-500/20', text: 'text-blue-400' },
+    emerald: { bg: 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20', text: 'text-emerald-400' },
+    amber: { bg: 'bg-amber-500/10 text-amber-400 border border-amber-500/20', text: 'text-amber-400' },
+    rose: { bg: 'bg-rose-500/10 text-rose-400 border border-rose-500/20', text: 'text-rose-400' },
+    sky: { bg: 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20', text: 'text-cyan-400' },
+    purple: { bg: 'bg-purple-500/10 text-purple-400 border border-purple-500/20', text: 'text-purple-400' },
+    slate: { bg: 'bg-slate-800/80 text-slate-400 border border-slate-700/60', text: 'text-slate-400' },
   };
 
-  const style = themeStyles[colorTheme] || themeStyles.indigo;
+  const style = iconThemeStyles[colorTheme] || iconThemeStyles.indigo;
 
   return (
     <div
       onClick={onClick}
-      className={`relative overflow-hidden rounded-2xl bg-white p-5 shadow-sm border border-slate-200/80 transition-all duration-200 ${
-        onClick ? 'cursor-pointer hover:shadow-md hover:-translate-y-0.5' : ''
-      } ${style.bg} ${className}`}
+      className={`stitch-card relative overflow-hidden rounded-xl p-5 border border-[#232D42] bg-[#151A25] transition-all duration-200 ${
+        hasLuminescentStroke ? 'stitch-luminescent-border shadow-lg shadow-blue-500/5' : ''
+      } ${
+        onClick ? 'cursor-pointer hover:bg-[#1A2232] hover:border-[#334155] hover:-translate-y-0.5' : ''
+      } ${className}`}
     >
       <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">{title}</span>
-        <div className={`p-2.5 rounded-xl ${style.iconBg} shadow-sm`}>{icon}</div>
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">{title}</span>
+        <div className={`p-2 rounded-lg ${style.bg}`}>{icon}</div>
       </div>
-      <div className="mt-3 flex items-baseline justify-between">
-        <span className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">{value}</span>
+      <div className="mt-3 flex items-baseline justify-between gap-2">
+        <span className="text-2xl sm:text-3xl font-sora font-semibold text-white tracking-tight tabular-nums">
+          {value}
+        </span>
         {trend && (
           <span
-            className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-              trend.isPositive ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+            className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
+              trend.isPositive
+                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25'
+                : 'bg-rose-500/10 text-rose-400 border-rose-500/25'
             }`}
           >
             {trend.value}
           </span>
         )}
       </div>
-      {subtitle && <p className="mt-1 text-xs text-slate-500">{subtitle}</p>}
+      {subtitle && <p className="mt-1.5 text-xs text-slate-400">{subtitle}</p>}
     </div>
   );
 };

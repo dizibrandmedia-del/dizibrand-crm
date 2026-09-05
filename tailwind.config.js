@@ -8,6 +8,24 @@ export default {
   theme: {
     extend: {
       colors: {
+        stitch: {
+          base: '#0B0E14',
+          shell: '#10131A',
+          card: '#151A25',
+          elevated: '#1A2232',
+          hairline: '#232D42',
+          borderElevated: '#334155',
+          primary: '#3B5BFF',
+          violet: '#8B5CF6',
+          cyan: '#06D0C6',
+        },
+        status: {
+          won: '#10B981',
+          qualified: '#3B82F6',
+          new: '#8B5CF6',
+          risk: '#F43F5E',
+          review: '#F59E0B',
+        },
         brand: {
           50: '#eef2ff',
           100: '#e0e7ff',
@@ -29,6 +47,7 @@ export default {
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        sora: ['Sora', 'system-ui', '-apple-system', 'sans-serif'],
       },
     },
   },

@@ -103,7 +103,10 @@ export const AdminLeadsPage: React.FC = () => {
 
   useEffect(() => {
     fetchAuxData();
-  }, []);
+    if (searchParams.get('create') === 'true') {
+      setIsCreateModalOpen(true);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     fetchLeads(1);
